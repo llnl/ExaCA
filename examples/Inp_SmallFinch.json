@@ -1,29 +1,65 @@
 {
-   "SimulationType": "FromFinch",
-   "MaterialFileName": "Inconel625.json",
-   "GrainOrientationFile": "GrainOrientationVectors.csv",
-   "RandomSeed": 0,
-   "Domain": {
-       "CellSize": 10,
-       "TimeStep": 0.2,
-       "NumberOfLayers": 1,
-       "LayerOffset": 8
-   },
-   "Nucleation": {
-      "Density": 100,
-      "MeanUndercooling": 5,
-      "StDev": 0.5
-   },
-   "Substrate": {
-      "MeanBaseplateGrainSize": 75
-   },
-   "Printing": {
-      "PathToOutput": "./",
-      "OutputFile": "TestProblemSmallFinch",
-      "PrintBinary": true,
-      "PrintExaConstitSize": 0,
-      "Interlayer": {
-          "Fields": ["LayerID", "GrainMisorientation"]
-      }
-   }
+    "Finch": {
+        "time": {
+          "Co": 0.125,
+          "start_time": 0.0,
+          "end_time": 0.0015,
+          "total_output_steps": 2,
+          "total_monitor_steps": 10
+        },
+        "space": {
+          "initial_temperature": 300.0,
+          "cell_size": 10e-6,
+          "global_low_corner": [-2e-4, -2e-4, -2e-4],
+          "global_high_corner": [3e-4, 2e-4, 0.0],
+          "ranks_per_dim": [1, 1, 1]
+        },
+        "properties": {
+          "density": 7500.0,
+          "specific_heat": 750.0,
+          "thermal_conductivity": 25.0,
+          "latent_heat": 2e5,
+          "solidus": 1410.0,
+          "liquidus": 1620.0
+        },
+        "source": {
+          "absorption": 0.3,
+          "two_sigma": [60e-6, 60e-6, 60e-6],
+          "scan_path_file": "../Finch/examples/single_line/scan_path_small.txt"
+        },
+        "sampling": {
+          "type": "solidification_data",
+          "format": "default",
+          "directory_name": "single_line_small"
+        }
+    },
+    "ExaCA": {
+        "SimulationType": "FromFinch",
+        "MaterialFileName": "Inconel625.json",
+        "GrainOrientationFile": "GrainOrientationVectors.csv",
+        "RandomSeed": 0,
+        "Domain": {
+            "CellSize": 10,
+            "TimeStep": 0.2,
+            "NumberOfLayers": 1,
+            "LayerOffset": 8
+        },
+        "Nucleation": {
+            "Density": 100,
+            "MeanUndercooling": 5,
+            "StDev": 0.5
+        },
+        "Substrate": {
+            "MeanBaseplateGrainSize": 75
+        },
+        "Printing": {
+            "PathToOutput": "./",
+            "OutputFile": "TestProblemSmallFinch",
+            "PrintBinary": true,
+            "PrintExaConstitSize": 0,
+            "Interlayer": {
+                "Fields": ["LayerID", "GrainMisorientation"]
+            }
+        }
+    }
 }

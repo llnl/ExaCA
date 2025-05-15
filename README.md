@@ -219,11 +219,12 @@ Alternatively, the `Finch-ExaCA` executable can be used for coupled Finch-ExaCA 
  * `Inp_SmallFinch.json`: simulates melting and solidification of a small melt pool segment at a coarse resolution
  * `Inp_Finch.json`: simulates melting and solidification of a small melt pool segment at a fine resolution, repeated for 3 layers
  * `Inp_FinchTranslate.json`: simulates melting and solidification of the small melt pool segment at the fine resolution translated in space to form 3 overlapping segments
-
-For coupled Finch-ExaCA runs, caution should be taken such that the cell size given in the CA input file matches that given in the Finch input file. Additionally, `scan_path_file` in the Finch input file (e.g. for `Inp_Finch.json` this is `examples/single_line/inputs_small_refined.json` in the Finch repository) should be modified to represent a global path name. Run by calling the created executable with a Finch input file and an ExaCA input file on the command line, with the Finch input file listed first:
+ * `Inp_FinchVariedLayers.json`: performs 3 Finch simulations of simulates melting and solidification of a small melt pool segment at the fine resolution, where each simulation uses a unique value for laser absorption, then uses ExaCA to simulate the solidification microstructure
+For simulation using the `Finch-ExaCA` executable Finch-ExaCA, both the Finch and ExaCA inputs are given in a combined input file given on the command line (see `examples/README.md` for more details on the format of this file, and the Finch README for the required Finch inputs). Alternatively, if the Finch inputs are not present in the combined Finch-ExaCA input file, and the combined simulation requires a single Finch heat transport simulation, separate input files for Finch and ExaCA can be given on the command line with the Finch input file listed first:
 ```
 mpiexec -n 1 ./build/install/bin/Finch-ExaCA $PATH_TO_FINCH/examples/single_line/inputs_small.json examples/Inp_SmallFinch.json
 ```
+For coupled Finch-ExaCA runs, caution should be taken such that the cell size given in the CA input file matches that used for heat transport as given in the Finch input file or the Finch-ExaCA combined input file. Additionally, `scan_path_file` in the Finch input file or in the Finch-ExaCA combined input file (e.g. for `Inp_Finch.json` this is `examples/single_line/inputs_small_refined.json` in the Finch repository) should be modified to represent an accurate file path.
 
 ## Output and post-processing analysis
 
