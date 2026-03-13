@@ -161,7 +161,14 @@ std::size_t checkForHeaderValues(std::string header_line) {
     std::vector<std::string> header_values(header_size, "");
     splitString(header_line, header_values, header_size);
 
-    std::vector<std::vector<std::string>> expected_values = {{"x"}, {"y"}, {"z"}, {"tm"}, {"tl", "ts"}, {"r", "cr"}};
+    std::vector<std::vector<std::string>> expected_values = {
+        {"x",  "x(m)"},
+        {"y",  "y(m)"},
+        {"z",  "z(m)"},
+        {"tm", "tm(s)"},
+        {"tl", "tl(s)", "ts", "ts(s)"},
+        {"r",  "r(k/s)", "cr", "cr(k/s)"}
+    };
     std::size_t num_expected_values = expected_values.size();
     if (num_expected_values > header_size)
         throw std::runtime_error("Error: Fewer values than expected found in temperature file header");
