@@ -293,30 +293,6 @@ def plotSurrogate(grid, phys_bounds, results, target_outputs):
     plt.savefig("surrogate_mean_grain_extent_z.png", dpi=300, bbox_inches='tight')
     #plt.show()
 
-def plot_contours(grid, phys_bounds):
-    surrogate_grid_nx = 40
-    surrogate_grid_ny = 40
-    x = np.linspace(-1, 1, surrogate_grid_nx)
-    y = np.linspace(-1, 1, surrogate_grid_ny)
-    XX, YY = np.meshgrid(x, y)
-    grid_points = np.array([np.array([x,y]) for x,y in zip(XX.flatten(), YY.flatten())])
-    dual_surrogate = grid.evaluateBatch(grid_points)
-    mean_grain_area_surrogate = dual_surrogate[:,0]
-    mean_grain_area_surrogate = mean_grain_area_surrogate.reshape(XX.shape)
-    grain_extent_z_surrogate = dual_surrogate[:,1]
-    grain_extent_z_surrogate = grain_extent_z_surrogate.reshape(XX.shape)
-    xs = phys_bounds[0][0] + (phys_bounds[1][0] - phys_bounds[0][0])*(x - np.min(XX))/(np.max(x) - np.min(x))
-    ys = phys_bounds[0][1] + (phys_bounds[1][1] - phys_bounds[0][1])*(y - np.min(YY))/(np.max(y) - np.min(y))
-
-    fig, ax = plt.subplots(ncols=1, nrows=1, constrained_layout=True)
-    ax.contour(xs, ys, mean_grain_area_surrogate, colors='k', levels=[0.68], linewidths=1.5)
-    ax.contour(xs, ys, grain_extent_z_surrogate, colors='k', levels=[exp_mean_grain_area], linewidths=1.5)
-    ax.set_xlabel("Nucleation density ($m^{-3}$)")
-    ax.set_ylabel("Mean nucleation undercooling (K)")
-    ax.set_title("Area fraction of as-solidified ferrite")
-    plt.savefig("/Users/65y/Desktop/AMMT_FY25/Calibration/Contours.png", dpi=300, bbox_inches='tight')
-    plt.show()
-
 # Main function
 if __name__ == "__main__":
 
