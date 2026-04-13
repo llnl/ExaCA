@@ -26,7 +26,7 @@ getFinchData(const int, const int, const int first_finch_simulation, const int n
     using exec_space = Kokkos::DefaultExecutionSpace;
     using memory_space = exec_space::memory_space;
     Kokkos::View<double **, Kokkos::LayoutLeft, Kokkos::HostSpace> input_temperature_data(
-        Kokkos::ViewAllocateWithoutInitializing("finch_temperature_data"), 0);
+        Kokkos::ViewAllocateWithoutInitializing("finch_temperature_data"), 0, 0);
     // Run Finch, storing solidification data, domain bounds, and the locations in the view where each layer's data
     // starts and ends
     const int last_finch_simulation = first_finch_simulation + num_finch_simulations;
