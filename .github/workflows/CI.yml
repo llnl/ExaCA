@@ -173,7 +173,7 @@ jobs:
         if: ${{ matrix.heat_transfer == 'Finch' }}
         working-directory: utilities/Finch
         run: |
-          $HOME/exaca/bin/Finch-ExaCA inputs_small.json ../../examples/Inp_SmallFinch.json
+          $HOME/exaca/bin/Finch-ExaCA ../../examples/Inp_SmallFinch.json
 
   HIP:
     defaults:
