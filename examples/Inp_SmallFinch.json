@@ -25,7 +25,7 @@
         "source": {
           "absorption": 0.3,
           "two_sigma": [60e-6, 60e-6, 60e-6],
-          "scan_path_file": "../Finch/examples/single_line/scan_path_small.txt"
+          "scan_path_file": "scan_path_small.txt"
         },
         "sampling": {
           "type": "solidification_data",
