@@ -16,7 +16,7 @@ ExaCA currently can model five types of problems:
 # ExaCA top level input files
 The .json files in the examples subdirectory are provided on the command line to let ExaCA know which problem is being simulated. The json files contain different input sections, with certain inputs only used for certain problem types. For optional inputs, the default value used is noted. There are two types of input files for ExaCA: "singular" (ExaCA) input files and "combined" (Finch-ExaCA). For combined input files, the top level input sections are `Finch` and `ExaCA`, with subsections `SimulationType`, `MaterialFileName`, `GrainOrientationsFile`, `RandomSeed`, `Domain`, `Nucleation`, `TemperatureData`, `Substrate`, and `Printing` in the ExaCA portion of the file and subsections as given in the Finch README for the Finch portion of the file. Note that for the Finch section of these files, inputs that vary on different layers (for multilayer simulations) can be given in a `layers` list; see `examples/Inp_FinchVariedLayers.json` for an example of this. For singular input files, the aforemenioned ExaCA subsections are top level inputs. 
 
-## Top level inputs (for singular type input files) or second level inputs (for combined input files)
+## Top level inputs (individual input files) or ExaCA level inputs (combined input files)
 |Input                   | Details |
 |------------------------|---------|
 | SimulationType         |
