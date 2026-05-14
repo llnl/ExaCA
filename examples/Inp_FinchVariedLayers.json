@@ -22,16 +22,34 @@
           "solidus": 1410.0,
           "liquidus": 1620.0
         },
-        "source": {
-          "absorption": 0.3,
-          "two_sigma": [60e-6, 60e-6, 60e-6],
-          "scan_path_file": "../Finch/examples/single_line/scan_path_small.txt"
-        },
         "sampling": {
           "type": "solidification_data",
           "format": "default",
           "directory_name": "single_line_small_exaca"
-        }
+        },
+        "layers": [
+            {
+                "source": {
+                    "absorption": 0.4,
+                    "two_sigma": [60e-6, 60e-6, 60e-6],
+                    "scan_path_file": "../Finch/examples/single_line/scan_path_small.txt"
+                }
+            },
+            {
+                "source": {
+                    "absorption": 0.3,
+                    "two_sigma": [60e-6, 60e-6, 60e-6],
+                    "scan_path_file": "../Finch/examples/single_line/scan_path_small.txt"
+                }
+            },
+            {
+                "source": {
+                    "absorption": 0.2,
+                    "two_sigma": [60e-6, 60e-6, 60e-6],
+                    "scan_path_file": "../Finch/examples/single_line/scan_path_small.txt"
+                }
+            }
+        ]
     },
     "ExaCA": {
         "SimulationType": "FromFinch",
@@ -41,7 +59,7 @@
         "Domain": {
             "CellSize": 3,
             "TimeStep": 0.08,
-            "NumberOfLayers": 1,
+            "NumberOfLayers": 3,
             "LayerOffset": 8
         },
         "Nucleation": {
@@ -49,23 +67,20 @@
             "MeanUndercooling": 5,
             "StDev": 0.5
         },
+        "TemperatureData": {
+            "TrimUnmeltedRegion": true,
+            "LayerwiseTempRead": false
+        },
         "Substrate": {
             "MeanBaseplateGrainSize": 50
         },
-        "TemperatureData": {
-            "TranslationCount": 2,
-            "OffsetDirection": "Y",
-            "SpatialOffset": 40,
-            "TemporalOffset": 1600,
-            "AlternatingDirection": true
-        },
         "Printing": {
             "PathToOutput": "./",
-            "OutputFile": "TestProblemFinchTranslate",
+            "OutputFile": "TestProblemFinchVariedLayers",
             "PrintBinary": true,
             "PrintExaConstitSize": 0,
             "Interlayer": {
-                "Fields": ["CritTimeStep", "LayerID", "GrainMisorientation"]
+                "Fields": ["GrainID", "LayerID", "GrainMisorientation"]
             }
         }
     }

@@ -298,56 +298,53 @@ void testInit_UnidirectionalGradient(const std::string simulation_type, const do
 // Check temperature initialization for translated/mirrored FromFile or FromFinch data
 template <typename MemorySpace>
 void checkTemperatureResults(Inputs &inputs, Grid &grid, Temperature<MemorySpace> &temperature,
-                             const int number_of_copies, const int id, const int np, const bool mirror_x) {
-    const int expected_num_data_points = grid.nx * number_of_copies * np;
-    std::vector<bool> expected_data_point_found(expected_num_data_points, false);
-    for (int n = 0; n < expected_num_data_points; n++) {
-        // X,Y,Z the cell would be placed at
-        const int coord_x = temperature.getTempCoordX(n, grid.x_min, grid.deltax);
-        const int coord_y = temperature.getTempCoordY(n, grid.y_min, grid.deltax, grid.y_offset);
-        const int coord_z = temperature.getTempCoordZ(n, grid.deltax, grid.layer_height, 0, grid.z_min_layer);
-        const int index = grid.get1DIndex(coord_x, coord_y, coord_z);
-        if (!expected_data_point_found[index])
-            expected_data_point_found[index] = true;
-        else {
-            std::string error = "Error: Rank " + std::to_string(id) + " has more than one data point at location (" +
-                                std::to_string(coord_x) + "," + std::to_string(coord_y) + "," + std::to_string(coord_z);
-            throw std::runtime_error(error);
+                             const int number_of_copies, const int, const int np, const bool mirror_x,
+                             const int num_layers_with_points) {
+
+    // Should have equal numbers of points associated with each layer - if initializing only 1 layer at a time, the data
+    // from the other layers should not have been stored
+    const int expected_num_data_points = grid.nx * number_of_copies * np * num_layers_with_points;
+    EXPECT_EQ(temperature.raw_temperature_data.extent(0), expected_num_data_points);
+    std::vector<int> expected_num_points_per_cell(grid.domain_size, 0);
+    for (int layernumber = 0; layernumber < num_layers_with_points; layernumber++) {
+        for (int n = 0; n < grid.nx * number_of_copies * np; n++) {
+            int point_num = layernumber * grid.nx * number_of_copies * np + n;
+            // X,Y,Z the cell would be placed at
+            const int coord_x = temperature.getTempCoordX(point_num, grid.x_min, grid.deltax);
+            const int coord_y = temperature.getTempCoordY(point_num, grid.y_min, grid.deltax, grid.y_offset);
+            const int coord_z =
+                temperature.getTempCoordZ(point_num, grid.deltax, grid.layer_height, layernumber, grid.z_min_layer);
+            const int index = grid.get1DIndex(coord_x, coord_y, coord_z);
+            expected_num_points_per_cell[index]++;
+            // Make sure the cell is associated with the correct temperature data from "input_temperature_data"
+            // TM for even numbered translations (or when mirror_x is false) is equal to the X coordinate plus any
+            // applied temporal offset in Y related to its Y coordinate. If mirrored, odd numbered translations will use
+            // (nx - coord_x) in place of coord_x in these calculations. TL should be (1 * layernumber) larger than TM,
+            // and the cooling rate is proportional to 100 times the MPI rank the point was initalized on (in turn equal
+            // to its Z coordinate)
+            const bool x_coord_mirrored = ((mirror_x) && (coord_y % 2 == 1));
+            double loc_along_scan;
+            if (x_coord_mirrored)
+                loc_along_scan = static_cast<double>((grid.nx - 1) - coord_x);
+            else
+                loc_along_scan = static_cast<double>(coord_x);
+            const double expected_tm =
+                loc_along_scan + static_cast<double>(coord_y) * inputs.temperature.temporal_offset;
+            const double expected_tl = expected_tm + 1.0 * (layernumber + 1);
+            const double expected_cr = 100.0 * static_cast<double>(coord_z + 1);
+            EXPECT_DOUBLE_EQ(expected_tm, temperature.raw_temperature_data(point_num, 3));
+            EXPECT_DOUBLE_EQ(expected_tl, temperature.raw_temperature_data(point_num, 4));
+            EXPECT_DOUBLE_EQ(expected_cr, temperature.raw_temperature_data(point_num, 5));
         }
-        // Make sure the cell is associated with the correct temperature data from "input_temperature_data"
-        // TM for even numbered translations (or when mirror_x is false) is equal to the X coordinate plus any applied
-        // temporal offset in Y related to its Y coordinate. If mirrored, odd numbered translations will use (nx -
-        // coord_x) in place of coord_x in these calculations. TL should be one larger than TM, and the cooling rate is
-        // proportional to 100 times the MPI rank the point was initalized on (in turn equal to its Z coordinate)
-        const bool x_coord_mirrored = ((mirror_x) && (coord_y % 2 == 1));
-        double loc_along_scan;
-        if (x_coord_mirrored)
-            loc_along_scan = static_cast<double>((grid.nx - 1) - coord_x);
-        else
-            loc_along_scan = static_cast<double>(coord_x);
-        const double expected_tm = loc_along_scan + static_cast<double>(coord_y) * inputs.temperature.temporal_offset;
-        const double expected_tl = expected_tm + 1.0;
-        const double expected_cr = 100.0 * static_cast<double>(coord_z + 1);
-        EXPECT_DOUBLE_EQ(expected_tm, temperature.raw_temperature_data(n, 3));
-        EXPECT_DOUBLE_EQ(expected_tl, temperature.raw_temperature_data(n, 4));
-        EXPECT_DOUBLE_EQ(expected_cr, temperature.raw_temperature_data(n, 5));
     }
 
-    // Make sure one data point was present in each expected cell
-    for (int n = 0; n < expected_num_data_points; n++) {
-        const int coord_x = temperature.getTempCoordX(n, grid.x_min, grid.deltax);
-        const int coord_y = temperature.getTempCoordY(n, grid.y_min, grid.deltax, grid.y_offset);
-        const int coord_z = temperature.getTempCoordZ(n, grid.deltax, grid.layer_height, 0, grid.z_min_layer);
-        const int index = grid.get1DIndex(coord_x, coord_y, coord_z);
-        if (!expected_data_point_found[index]) {
-            if (!expected_data_point_found[index])
-                expected_data_point_found[index] = true;
-            else {
-                std::string error = "Error: Rank " + std::to_string(id) +
-                                    " has more than one data point at location (" + std::to_string(coord_x) + "," +
-                                    std::to_string(coord_y) + "," + std::to_string(coord_z);
-                throw std::runtime_error(error);
-            }
+    // Make sure one data point was present in each expected cell per each layer of data stored. With number_of_copies =
+    // 1, data will only be present at Y = 0 locally, and each copy is translated 1 cell in Y
+    for (int index = 0; index < grid.domain_size; index++) {
+        const int coord_y = grid.getCoordY(index);
+        const int coord_z = grid.getCoordZ(index);
+        if ((coord_y < number_of_copies) && (coord_z < np)) {
+            EXPECT_EQ(expected_num_points_per_cell[index], num_layers_with_points);
         }
     }
 }
@@ -384,7 +381,8 @@ void initTestGrid(const int id, const int np, Grid &grid) {
 }
 
 // Test storing temperature data from Finch on the correct ExaCA ranks, optionally mirroring and translating the data
-void testInitTemperatureFromFinch(const bool mirror_x, const int number_of_copies) {
+void testInitTemperatureFromFinch(const bool mirror_x, const int number_of_copies, const bool layerwise_temp_init,
+                                  const int number_of_layers) {
 
     using memory_space = TEST_MEMSPACE;
     using view_type_coupled = Kokkos::View<double **, Kokkos::LayoutLeft, Kokkos::HostSpace>;
@@ -397,35 +395,52 @@ void testInitTemperatureFromFinch(const bool mirror_x, const int number_of_copie
 
     // Default inputs struct - manually set temperature values for test
     Inputs inputs;
+    inputs.temperature.layerwise_temp_read = layerwise_temp_init;
+    inputs.temperature.temp_files_in_series = number_of_layers;
     // Default grid struct - manually set up domain for test
     Grid grid;
     initTestInputs(mirror_x, number_of_copies, inputs);
     initTestGrid(id, np, grid);
+    grid.number_of_layers = number_of_layers;
 
-    // Create dummy Finch temperature data stored on various ranks, to be mapped to ExaCA ranks
-    view_type_coupled input_temperature_data(Kokkos::ViewAllocateWithoutInitializing("FinchData"), grid.nx * np, 6);
-
-    // Each rank has Finch data at a given Z location, at all relevant X values and at every third Y coordinate (so each
-    // ExaCA rank after rearranging the data will only own data from one of the Y coordinates). Number of data points
-    // proportional to the number of MPI ranks
+    // Create dummy Finch temperature data stored on various ranks, to be mapped to ExaCA ranks. Each layer has nx * np
+    // locations with data
+    const int locations_with_data = np * grid.nx * number_of_layers;
+    int num_layers_with_points;
+    if (layerwise_temp_init)
+        num_layers_with_points = 1;
+    else
+        num_layers_with_points = number_of_layers;
+    view_type_coupled input_temperature_data(Kokkos::ViewAllocateWithoutInitializing("FinchData"), locations_with_data,
+                                             6);
+    std::vector<int> first_value, last_value;
     int finch_counter = 0;
-    for (int coord_x = 0; coord_x < grid.nx; coord_x++) {
-        for (int coord_y = 0; coord_y < np; coord_y++) {
-            input_temperature_data(finch_counter, 0) = grid.x_min + grid.deltax * coord_x;
-            input_temperature_data(finch_counter, 1) = grid.y_min + 3.0 * coord_y * grid.deltax;
-            input_temperature_data(finch_counter, 2) = grid.z_min + id * grid.deltax;
-            input_temperature_data(finch_counter, 3) = static_cast<double>(coord_x);
-            input_temperature_data(finch_counter, 4) = static_cast<double>(coord_x) + 1.0;
-            input_temperature_data(finch_counter, 5) = 100.0 * (id + 1);
-            finch_counter++;
+    for (int layernumber = 0; layernumber < num_layers_with_points; layernumber++) {
+        first_value.push_back(finch_counter);
+        // Each rank has Finch data at a given Z location, at all relevant X values and at every third Y coordinate (so
+        // each ExaCA rank after rearranging the data will only own data from one of the Y coordinates). Number of data
+        // points proportional to the number of MPI ranks and varies based on the layer number. Liquidus times are
+        // offset from the melting times by a value proportional to the layer number
+        for (int coord_x = 0; coord_x < grid.nx; coord_x++) {
+            for (int coord_y = 0; coord_y < np; coord_y++) {
+                input_temperature_data(finch_counter, 0) = grid.x_min + grid.deltax * coord_x;
+                input_temperature_data(finch_counter, 1) = grid.y_min + 3.0 * coord_y * grid.deltax;
+                input_temperature_data(finch_counter, 2) = grid.z_min + id * grid.deltax;
+                input_temperature_data(finch_counter, 3) = static_cast<double>(coord_x);
+                input_temperature_data(finch_counter, 4) = static_cast<double>(coord_x) + 1.0 * (layernumber + 1);
+                input_temperature_data(finch_counter, 5) = 100.0 * (id + 1);
+                finch_counter++;
+            }
         }
+        last_value.push_back(finch_counter);
     }
 
     // Construct temperature views
-    Temperature<memory_space> temperature(id, np, grid, inputs.temperature, inputs.print, input_temperature_data);
+    Temperature<memory_space> temperature(id, np, grid, inputs.temperature, inputs.print, input_temperature_data, first_value,
+                                          last_value);
 
     // Check that the right ranks have the right temperature data
-    checkTemperatureResults(inputs, grid, temperature, number_of_copies, id, np, mirror_x);
+    checkTemperatureResults(inputs, grid, temperature, number_of_copies, id, np, mirror_x, num_layers_with_points);
 }
 
 // Test storing temperature data from a file on the correct ExaCA ranks, using the same process at the FromFinch test
@@ -475,7 +490,7 @@ void testInitTemperatureFromFile(const bool mirror_x, const int number_of_copies
     temperature.readTemperatureData(id, grid, 0);
 
     // Check that the right ranks have the right temperature data
-    checkTemperatureResults(inputs, grid, temperature, number_of_copies, id, np, mirror_x);
+    checkTemperatureResults(inputs, grid, temperature, number_of_copies, id, np, mirror_x, grid.number_of_layers);
 }
 
 //---------------------------------------------------------------------------//
@@ -498,9 +513,17 @@ TEST(TEST_CATEGORY, temperature) {
     testInit_UnidirectionalGradient("Directional", 1000000, 2);
     testInit_UnidirectionalGradient("SingleGrain", 0, 2);
     testInit_UnidirectionalGradient("SingleGrain", 1000000, 2);
-    testInitTemperatureFromFinch(false, 1);
-    testInitTemperatureFromFinch(false, 3);
-    testInitTemperatureFromFinch(true, 3);
+    // Coupled Finch-ExaCA simulation init tests: mirror_x (true/false), number_of_copies, layerwise_temp_init
+    // (true/false), number_of_layers
+    std::vector<bool> mirror_x_vals = {false, false, true, false, false};
+    std::vector<int> number_of_copies_vals = {1, 3, 3, 1, 1};
+    std::vector<bool> layerwise_temp_init_vals = {false, false, false, false, true};
+    std::vector<int> number_of_layers_finch_vals = {1, 1, 1, 2, 2};
+    num_vals = mirror_x_vals.size();
+    for (int test_count = 0; test_count < num_vals; test_count++) {
+        testInitTemperatureFromFinch(mirror_x_vals[test_count], number_of_copies_vals[test_count],
+                                     layerwise_temp_init_vals[test_count], number_of_layers_finch_vals[test_count]);
+    }
     testInitTemperatureFromFile(false, 1);
     testInitTemperatureFromFile(false, 3);
     testInitTemperatureFromFile(true, 3);

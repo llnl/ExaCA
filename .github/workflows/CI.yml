@@ -124,8 +124,8 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: ORNL-MDF/Finch
-          # This is after the ability to extract data bounds with an input MPI comm was added
-          ref: 928d56776550e1a546a93197f713fc4d7e1a618d
+          # This is after the capability to extract multilayer temperature data was added
+          ref: 9f79a05ca6ff4fe31525161859e074ea881fc2b6
           path: finch
       - name: Build Finch
         if: ${{ matrix.heat_transfer == 'Finch' }}
@@ -173,7 +173,7 @@ jobs:
         if: ${{ matrix.heat_transfer == 'Finch' }}
         working-directory: utilities/Finch
         run: |
-          $HOME/exaca/bin/Finch-ExaCA inputs_small.json ../../examples/Inp_SmallFinch.json
+          $HOME/exaca/bin/Finch-ExaCA ../../examples/Inp_SmallFinch.json
 
   HIP:
     defaults:
