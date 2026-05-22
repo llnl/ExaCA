@@ -258,7 +258,10 @@ The analysis executable, in addition to outputting grain statistics, can also ou
 
 ## Automated input file generation using Tasmanian (https://tasmanian.ornl.gov/)
 
-Within the [utilities/](utilities/) directory, an example python script including automated input file generation, launching of an ensemble of ExaCA simulations and analysis of the simulation results, the plotting of surrogate model response surfaces for outputs of interest, and the calibration of the model input parameters to produce target outputs can be run using the python script [utilities/TASMANIAN/DirSolCalibration.py](utilities/TASMANIAN/DirSolCalibration.py). Python dependencies to run this script are given in [utilities/TASMANIAN/requirements.txt](utilities/TASMANIAN/requirements.txt). This example is based on the directional solidification test problem from the `examples` directory, where thermal gradient and heterogeneous nucleation density are the two inputs varied across the simulation ensemble members and mean grain area at the top surface and mean grain extent in the Z direction are the two outputs used for calibration. 
+Within the [utilities/](utilities/) directory, an example python script for automating an ensemble of ExaCA simulations using TASMANIAN is provided. 
+This includes input file generation, launching of an ensemble of ExaCA simulations, analysis of the simulation results, plotting of surrogate model response surfaces for outputs of interest, and the calibration of the model input parameters to match target outputs.
+The python file [utilities/TASMANIAN/DirSolCalibration.py](utilities/TASMANIAN/DirSolCalibration.py) and python dependencies necessary [utilities/TASMANIAN/requirements.txt](utilities/TASMANIAN/requirements.txt) are available, together with dependent scripts.
+This example is based on the directional solidification test problem from the `examples` directory, where thermal gradient and heterogeneous nucleation density are the two inputs varied across the simulation ensemble members and mean grain area at the top surface and mean grain extent in the Z direction are the two outputs used for calibration.
 
 ## Release
 
