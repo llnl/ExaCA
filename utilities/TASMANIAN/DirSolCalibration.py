@@ -26,6 +26,7 @@ def writeExaCAInputFiles(grid_points, phys_bounds, num_points):
         input_template_data = json.load(file)
 
     # Write input files
+    print("Input file | Nucleation density (per m3) | Cooling rate (K/s) | Thermal gradient (K/m)")
     for file_number in range(num_points):
         # Thermal gradient for this ensemble member
         # Scale from 0 to 1 (originally between -1 and 1)
@@ -46,6 +47,8 @@ def writeExaCAInputFiles(grid_points, phys_bounds, num_points):
         input_template_data["Printing"]["OutputFile"] = "Case" + str(file_number)
 
         # Write modified json template data
+        print(file_number, " | ", nuc_density_file_number, " | ", thermal_grad_file_number, " | ", thermal_grad_file_number * isotherm_velocity)
+
         modified_input_filename = "examples/Inp_Case" + str(file_number) + ".json"
         with open(modified_input_filename, 'w') as file:
             json.dump(input_template_data, file, indent=4)
@@ -293,15 +296,32 @@ def plotSurrogate(grid, phys_bounds, results, target_outputs):
     plt.savefig("surrogate_mean_grain_extent_z.png", dpi=300, bbox_inches='tight')
     #plt.show()
 
-# Main function
+# Main function - ensemble of simulations with varied nucleation density and thermal gradient
+
 if __name__ == "__main__":
 
-    # Ensemble of simulations with varied nucleation density and thermal gradient
-    # Fixed isotherm velocity (m/s)
-    isotherm_velocity = 0.1
+    
+    # Read and parse data from input file
+    with open("utilities/TASMANIAN/Inputs.json", 'r') as file:
+        input_data = json.load(file)
+        # Fixed isotherm velocity (m/s)
+        isotherm_velocity = input_data["Inputs"]["V"]
+        # Ranges of nucleation density and thermal gradient
+        nuc_density_min = input_data["Inputs"]["NucleationDensity"][0]
+        nuc_density_max = input_data["Inputs"]["NucleationDensity"][1]
+        thermal_grad_min = input_data["Inputs"]["G"][0]
+        thermal_grad_max = input_data["Inputs"]["G"][1]
+        # Target outputs - mean grain area (µm2) and mean grain size in Z (µm)
+        target_mean_grain_area = input_data["Outputs"]["MeanGrainArea"]
+        target_mean_grain_size_z = input_data["Outputs"]["MeanGrainSizeZ"]
 
-    # Target mean grain area and mean grain extent in Z
-    target_ouputs = [100.0, 15.0]
+    # Arrays for input bounds/output targets
+    phys_bounds = [
+         [thermal_grad_min, nuc_density_min], # lower bounds for thermal gradient (K/m), nucleation density (m^-3)
+         [thermal_grad_max, nuc_density_max] # upper bounds for thermal gradient, nucleation density
+    ]
+    target_ouputs = [target_mean_grain_area, target_mean_grain_size_z]
+
     # Tasmanian uniform grid
     num_inputs = 2
     num_outputs = 2
@@ -320,11 +340,6 @@ if __name__ == "__main__":
     grid_points = grid.getPoints()
     # Number of simulations to run
     num_points = len(grid_points)
-    
-    phys_bounds = [
-         [2e5, 1e14], # lower bounds for thermal gradient (K/m), nucleation density (m^-3)
-         [2e6, 1e15] # upper bounds for thermal gradient, nucleation density
-    ]
 
     # Write ExaCA input files for the ensemble of simulations
     writeExaCAInputFiles(grid_points, phys_bounds, num_points)
