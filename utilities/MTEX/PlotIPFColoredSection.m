@@ -56,7 +56,10 @@ function [] = PlotIPFColoredSection(MTEXFile, Phaselist)
     if (numphases == 2)
         figure(fig_counter);
         ebsd(pname1).color = [0 0 0];
-        ebsd(pname2).color = [1 1 1];
+        % only assign white color to second phase if ebsd object is multiphase
+        if (sum(ebsd.phase) ~= length(ebsd.phase))
+            ebsd(pname2).color = [1 1 1];
+        end
         plot(ebsd);
         OutputFileName = strcat(BaseFileName,'_SolidifiedPhases.png');
         export_fig(OutputFileName,'-r150');
