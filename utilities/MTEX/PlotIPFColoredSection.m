@@ -57,7 +57,8 @@ function [] = PlotIPFColoredSection(MTEXFile, Phaselist)
         figure(fig_counter);
         ebsd(pname1).color = [0 0 0];
         % only assign white color to second phase if ebsd object is multiphase
-        if (sum(ebsd.phase) ~= length(ebsd.phase))
+        second_phase_present = any(ebsd.phase == 2, 'all');
+        if (second_phase_present)
             ebsd(pname2).color = [1 1 1];
         end
         plot(ebsd);
