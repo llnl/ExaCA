@@ -258,11 +258,10 @@ The analysis executable, in addition to outputting grain statistics, can also ou
 
 ## Automated input file generation using Tasmanian (https://tasmanian.ornl.gov/)
 
-Within the [utilities/](utilities/) directory, an example python script for the generation of an ensemble of input files is available. By running the example script `TasmanianTest.py`, 69 ExaCA input files are generated with a range of heterogeneous nucleation density, mean nucleation undercooling, and mean substrate grain size values, based on the ranges in python code (N0Min-N0Max, dTNMin-dTNMax, and S0Min-S0Max), respectively. Running the python script from the ExaCA source directory, via the command
-```
-python utilities/TasmanianTest.py PathToTemperatureFile1 PathToTemperatureFile2 ...
-```
-the script will generate an ensemble of input files in the `examples` directory, for a series of simulations that will use the thermal history or histories described in `PathToTemperatureFile1(s)` being repeated for a certain number of layers (56 in this example). If a simulation repeating multiple thermal histories is desired (for example, and even layer and an odd layer scan pattern), both paths to/file names of the thermal history data should be given on the command line. Running this code will generate N = 1 to 69 input files named `examples/Inp_TasmanianTest_[N].json`. Other CA inputs, such as the time step or cell size, must be adjusted manually inside of the python script. Separate instances of ExaCA can be run with each ensemble member to probe microstructure dependency on nucleation and substrate.
+Within the [utilities/](utilities/) directory, an example python script for automating an ensemble of ExaCA simulations using TASMANIAN is provided. 
+This includes input file generation, launching of an ensemble of ExaCA simulations, analysis of the simulation results, plotting of surrogate model response surfaces for outputs of interest, and the calibration of the model input parameters to match target outputs.
+The python file [utilities/TASMANIAN/DirSolCalibration.py](utilities/TASMANIAN/DirSolCalibration.py) and python dependencies necessary [utilities/TASMANIAN/requirements.txt](utilities/TASMANIAN/requirements.txt) are available, together with dependent scripts. The script should be run from the top level ExaCA directory.
+This example is based on the directional solidification test problem from the `examples` directory. The ensemble of simulations is set up using the input file [utilities/TASMANIAN/Inputs.json](utilities/TASMANIAN/Inputs.json), where an isotherm velocity (m/s) is specified along with ranges for the inputs nucleation density (m^-3) and thermal gradient (K/m) and the target output values for mean grain area at the top surfaces of the simulation domains (µm^2) and the mean grain size in the Z direction (µm).
 
 ## Release
 

@@ -1,0 +1,11 @@
+{
+    "Inputs": {
+        "V": 0.1,
+        "NucleationDensity": [1e14, 1e15],
+        "G": [2e5, 2e6]
+    },
+    "Outputs": {
+        "MeanGrainArea": 100.0,
+        "MeanGrainSizeZ": 15.0
+    }
+}
