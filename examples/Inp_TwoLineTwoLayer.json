@@ -1,7 +1,7 @@
 {
    "SimulationType": "FromFile",
    "MaterialFileName": "Inconel625.json",
-   "GrainOrientationFile": "GrainOrientationVectors.csv",
+   "CrystalOrientationFile": "CrystalOrientationVectors.csv",
    "RandomSeed": 0,
    "Domain": {
        "CellSize": 2.5,
@@ -28,7 +28,7 @@
       "PrintBinary": false,
       "PrintExaConstitSize": 0,
       "Interlayer": {
-          "Fields": ["GrainID", "LayerID", "GrainMisorientation", "UndercoolingCurrent", "SolidificationEventCounter"],
+          "Fields": ["GrainID", "LayerID", "CrystalMisorientationZ", "UndercoolingCurrent", "SolidificationEventCounter"],
           "Layers": [0, 1]
       }
    }

@@ -128,20 +128,24 @@ struct PrintInputs {
     std::vector<bool> required_print_field = {true, true, false, false, false, false, false};
 
     // Names of output fields that can be printed to files during or at the end of a simulation
-    std::vector<std::string> fieldnames_key = {"GrainID",
-                                               "LayerID",
-                                               "PhaseID",
-                                               "GrainMisorientation",
-                                               "UndercoolingCurrent",
-                                               "UndercoolingSolidificationStart",
-                                               "MeltPoolEdge",
-                                               "MeltTimeStep",
-                                               "CritTimeStep",
-                                               "UndercoolingChange",
-                                               "CellType",
-                                               "DiagonalLength",
-                                               "SolidificationEventCounter",
-                                               "NumberOfSolidificationEvents"};
+    std::vector<std::string> fieldnames_key = {
+        "GrainID",
+        "LayerID",
+        "PhaseID",
+        "CrystalMisorientationX",
+        "CrystalMisorientationY",
+        "CrystalMisorientationZ",
+        "UndercoolingCurrent",
+        "UndercoolingSolidificationStart",
+        "MeltPoolEdge",
+        "MeltTimeStep",
+        "CritTimeStep",
+        "UndercoolingChange",
+        "CellType",
+        "DiagonalLength",
+        "SolidificationEventCounter",
+        "NumberOfSolidificationEvents",
+    };
     // Fields to be printed during a given layer
     bool intralayer = false;
     int intralayer_increment = 1;
@@ -150,7 +154,7 @@ struct PrintInputs {
     bool intralayer_grain_id = false;
     bool intralayer_layer_id = false;
     bool intralayer_phase_id = false;
-    bool intralayer_grain_misorientation = false;
+    std::vector<bool> intralayer_crystal_misorientation;
     bool intralayer_undercooling_current = false;
     bool intralayer_undercooling_solidification_start = false;
     bool intralayer_melt_time_step = false;
@@ -167,7 +171,7 @@ struct PrintInputs {
     bool interlayer_grain_id = false;
     bool interlayer_phase_id = false;
     bool interlayer_layer_id = false;
-    bool interlayer_grain_misorientation = false;
+    std::vector<bool> interlayer_crystal_misorientation;
     bool interlayer_undercooling_solidification_start = false;
     bool interlayer_undercooling_current = false;
     bool interlayer_melt_time_step = false;

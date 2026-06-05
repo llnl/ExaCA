@@ -117,15 +117,16 @@ int main(int argc, char *argv[]) {
                                                              found_layer_id);
 
             // Calculate and if specified, print misorientation data
-            std::vector<float> grain_misorientation_x_vector =
-                representativeregion.getGrainMisorientation("X", orientation);
-            std::vector<float> grain_misorientation_y_vector =
-                representativeregion.getGrainMisorientation("Y", orientation);
-            std::vector<float> grain_misorientation_z_vector =
-                representativeregion.getGrainMisorientation("Z", orientation);
+            std::vector<float> crystal_misorientation_x_vector =
+                representativeregion.getCrystalMisorientation("X", orientation);
+            std::vector<float> crystal_misorientation_y_vector =
+                representativeregion.getCrystalMisorientation("Y", orientation);
+            std::vector<float> crystal_misorientation_z_vector =
+                representativeregion.getCrystalMisorientation("Z", orientation);
             if (representativeregion.analysis_options_stats_yn[1])
-                representativeregion.printMeanMisorientations(
-                    qois, grain_misorientation_x_vector, grain_misorientation_y_vector, grain_misorientation_z_vector);
+                representativeregion.printMeanMisorientations(qois, crystal_misorientation_x_vector,
+                                                              crystal_misorientation_y_vector,
+                                                              crystal_misorientation_z_vector);
 
             // Print mean size data if specified
             if (representativeregion.analysis_options_stats_yn[2])
@@ -165,9 +166,9 @@ int main(int argc, char *argv[]) {
             // Write per-grain stats for the analysis types specified to the file
             // "[base_filename_this_region]_grains.csv"
             if (representativeregion.print_per_grain_stats_yn)
-                representativeregion.writePerGrainStats(base_filename_this_region, grain_misorientation_x_vector,
-                                                        grain_misorientation_y_vector, grain_misorientation_z_vector,
-                                                        build_trans_aspect_ratio, grain_red, grain_green, grain_blue);
+                representativeregion.writePerGrainStats(
+                    base_filename_this_region, crystal_misorientation_x_vector, crystal_misorientation_y_vector,
+                    crystal_misorientation_z_vector, build_trans_aspect_ratio, grain_red, grain_green, grain_blue);
 
             // ExaConstit print a file named "[base_filename_this_region]_ExaConstit.csv"
             if (representativeregion.print_exaconstit_yn) {
@@ -177,7 +178,7 @@ int main(int argc, char *argv[]) {
             // Pole figure print a file named "[base_filename_this_region]_PoleFigureData.txt"
             if (representativeregion.print_pole_figure_yn) {
                 auto go_histogram = representativeregion.getOrientationHistogram(
-                    orientation.n_grain_orientations, grain_id, layer_id, phase_id, num_phases, found_layer_id);
+                    orientation.n_crystal_orientations, grain_id, layer_id, phase_id, num_phases, found_layer_id);
                 representativeregion.writePoleFigure(base_filename_this_region, orientation, go_histogram);
             }
 

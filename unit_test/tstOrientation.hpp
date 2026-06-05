@@ -23,15 +23,15 @@ void testOrientationInit_Vectors() {
 
     using memory_space = TEST_MEMSPACE;
 
-    std::string grain_orientation_file_s = checkFileInstalled("GrainOrientationVectors.csv", 0);
+    std::string crystal_orientation_file_s = checkFileInstalled("CrystalOrientationVectors.csv", 0);
 
     // Initialize grain orientations - unit vector form only
     int id = 0;
-    std::vector<std::string> grain_orientation_file = {grain_orientation_file_s};
-    Orientation<memory_space> orientation(id, grain_orientation_file, false);
+    std::vector<std::string> crystal_orientation_file = {crystal_orientation_file_s};
+    Orientation<memory_space> orientation(id, crystal_orientation_file, false);
 
     // Check results for first 2 orientations (first 18 values in the file)
-    EXPECT_EQ(orientation.n_grain_orientations, 10000);
+    EXPECT_EQ(orientation.n_crystal_orientations, 10000);
 
     std::vector<float> expected_grain_unit_vector = {0.848294,  0.493303,  0.19248,  -0.522525, 0.720911,  0.455253,
                                                      0.0858167, -0.486765, 0.869308, 0.685431,  0.188182,  0.7034,
@@ -47,16 +47,16 @@ void testOrientationInit_Angles() {
 
     using memory_space = TEST_MEMSPACE;
 
-    std::string grain_orientation_file_s = checkFileInstalled("GrainOrientationVectors.csv", 0);
-    std::vector<std::string> grain_orientation_file = {grain_orientation_file_s};
+    std::string crystal_orientation_file_s = checkFileInstalled("CrystalOrientationVectors.csv", 0);
+    std::vector<std::string> crystal_orientation_file = {crystal_orientation_file_s};
 
-    // Initialize grain orientations - unit vector form and data from GrainOrientationEulerAnglesBungeZXZ.csv should be
-    // read
+    // Initialize grain orientations - unit vector form and data from CrystalOrientationEulerAnglesBungeZXZ.csv should
+    // be read
     int id = 0;
-    Orientation<memory_space> orientation(id, grain_orientation_file, true);
+    Orientation<memory_space> orientation(id, crystal_orientation_file, true);
 
     // Check results
-    EXPECT_EQ(orientation.n_grain_orientations, 10000);
+    EXPECT_EQ(orientation.n_crystal_orientations, 10000);
 
     // Check first two orientations (first 6 values in the file)
     std::vector<float> expected_euler_angles = {9.99854, 29.62172, 22.91854, 311.08350, 47.68814, 72.02547};
@@ -91,7 +91,7 @@ void testConvertGrainIDForBuffer() {
     }
     grain_id = Kokkos::create_mirror_view_and_copy(memory_space(), grain_id_host);
 
-    int n_grain_orientations = 10000;
+    int n_crystal_orientations = 10000;
 
     // Check that these were converted to their components and back correctly
     view_type grain_id_converted(Kokkos::ViewAllocateWithoutInitializing("grain_id_converted"),
@@ -99,9 +99,9 @@ void testConvertGrainIDForBuffer() {
 
     Kokkos::parallel_for(
         "TestInitGrainIDs", total_n_grain_id_values, KOKKOS_LAMBDA(const int &n) {
-            int my_grain_orientation = getGrainOrientation(grain_id(n), n_grain_orientations, false);
-            int my_grain_number = getGrainNumber(grain_id(n), n_grain_orientations);
-            grain_id_converted[n] = getGrainID(my_grain_orientation, my_grain_number, n_grain_orientations);
+            int my_grain_orientation = getCrystalOrientation(grain_id(n), n_crystal_orientations, false);
+            int my_grain_number = getGrainNumber(grain_id(n), n_crystal_orientations);
+            grain_id_converted[n] = getGrainID(my_grain_orientation, my_grain_number, n_crystal_orientations);
         });
     auto grain_id_converted_host = Kokkos::create_mirror_view(Kokkos::HostSpace(), grain_id_converted);
     for (int n = 0; n < total_n_grain_id_values; n++)

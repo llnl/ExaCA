@@ -1,7 +1,7 @@
 {
    "SimulationType": "SingleGrain",
    "MaterialFileName": "Inconel625.json",
-   "GrainOrientationFile": "GrainOrientationVectors.csv",
+   "CrystalOrientationFile": "CrystalOrientationVectors.csv",
    "Domain": {
        "CellSize": 1,
        "TimeStep": 0.0666667,

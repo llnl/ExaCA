@@ -84,9 +84,9 @@ void testHaloUpdate() {
                                       grid.nx * grid.ny_local * grid.z_layer_bottom + grid.domain_size);
 
     // Initialize grain orientations
-    std::string grain_orientation_file_s = checkFileInstalled("GrainOrientationVectors.csv", id);
-    std::vector<std::string> grain_orientation_file = {grain_orientation_file_s};
-    Orientation<memory_space> orientation(id, grain_orientation_file, false);
+    std::string crystal_orientation_file_s = checkFileInstalled("CrystalOrientationVectors.csv", id);
+    std::vector<std::string> crystal_orientation_file = {crystal_orientation_file_s};
+    Orientation<memory_space> orientation(id, crystal_orientation_file, false);
 
     // Initialize host views - set initial GrainID values to 0, all CellType values to liquid
     CellData<memory_space> celldata(grid, inputs.substrate);
@@ -180,7 +180,7 @@ void testHaloUpdate() {
                 float ghost_pid = 0.0;
                 interface.loadGhostNodes(ghost_gid, ghost_docx, ghost_docy, ghost_docz, ghost_dl, ghost_pid,
                                          grid.ny_local, coord_x, coord_y, coord_z, grid.at_north_boundary,
-                                         grid.at_south_boundary, orientation.n_grain_orientations);
+                                         grid.at_south_boundary, orientation.n_crystal_orientations);
             }
         });
     haloUpdate(0, 0, grid, celldata, interface, orientation);
@@ -272,7 +272,7 @@ void testResizeRefillBuffers() {
     grid.domain_size_all_layers = grid.nx * grid.ny_local * grid.nz;
     grid.layer_range = std::make_pair(grid.nx * grid.ny_local * grid.z_layer_bottom,
                                       grid.nx * grid.ny_local * grid.z_layer_bottom + grid.domain_size);
-    int n_grain_orientations = 10000;
+    int n_crystal_misorientations = 10000;
 
     // Allocate device views: entire domain on each rank
     // Default to wall cells (CellType(index) = 0) with GrainID of 0
@@ -282,9 +282,9 @@ void testResizeRefillBuffers() {
 
     // Orientation struct
     // Initialize grain orientations
-    std::string grain_orientation_file_s = checkFileInstalled("GrainOrientationVectors.csv", id);
-    std::vector<std::string> grain_orientation_file = {grain_orientation_file_s};
-    Orientation<memory_space> orientation(id, grain_orientation_file, false);
+    std::string crystal_misorientation_file_s = checkFileInstalled("CrystalOrientationVectors.csv", id);
+    std::vector<std::string> crystal_misorientation_file = {crystal_misorientation_file_s};
+    Orientation<memory_space> orientation(id, crystal_misorientation_file, false);
 
     // Interface struct - set buffer size to 1
     int buf_size_initial_estimate = 1;
@@ -313,7 +313,7 @@ void testResizeRefillBuffers() {
             // Load into appropriate buffers
             interface.loadGhostNodes(ghost_gid, ghost_docx, ghost_docy, ghost_docz, ghost_dl, ghost_pid, grid.ny_local,
                                      coord_x, coord_y, coord_z, grid.at_north_boundary, grid.at_south_boundary,
-                                     n_grain_orientations);
+                                     n_crystal_misorientations);
         });
     Kokkos::parallel_for(
         "InitDomainActiveCellsSouth", 1, KOKKOS_LAMBDA(const int &) {
@@ -336,7 +336,7 @@ void testResizeRefillBuffers() {
             // Load into appropriate buffers
             interface.loadGhostNodes(ghost_gid, ghost_docx, ghost_docy, ghost_docz, ghost_dl, ghost_pid, grid.ny_local,
                                      coord_x, coord_y, coord_z, grid.at_north_boundary, grid.at_south_boundary,
-                                     n_grain_orientations);
+                                     n_crystal_misorientations);
         });
 
     // Each rank will have "id % 4" cells of additional data to send to the south, and 1 cell of additional data to send
@@ -364,7 +364,7 @@ void testResizeRefillBuffers() {
             // Attempt to load into appropriate buffers
             bool data_fits_in_buffer = interface.loadGhostNodes(
                 ghost_gid, ghost_docx, ghost_docy, ghost_docz, ghost_dl, ghost_pid, grid.ny_local, coord_x, coord_y,
-                coord_z, grid.at_north_boundary, grid.at_south_boundary, n_grain_orientations);
+                coord_z, grid.at_north_boundary, grid.at_south_boundary, n_crystal_misorientations);
             if (!(data_fits_in_buffer)) {
                 // This cell's data did not fit in the buffer with current size buf_size - mark with temporary type
                 celldata.cell_type(index) = ActiveFailedBufferLoad;
@@ -391,7 +391,7 @@ void testResizeRefillBuffers() {
             // Attempt to load into appropriate buffers
             bool data_fits_in_buffer = interface.loadGhostNodes(
                 ghost_gid, ghost_docx, ghost_docy, ghost_docz, ghost_dl, ghost_pid, grid.ny_local, coord_x, coord_y,
-                coord_z, grid.at_north_boundary, grid.at_south_boundary, n_grain_orientations);
+                coord_z, grid.at_north_boundary, grid.at_south_boundary, n_crystal_misorientations);
             if (!(data_fits_in_buffer)) {
                 // This cell's data did not fit in the buffer with current size buf_size - mark with temporary type
                 celldata.cell_type(index) = ActiveFailedBufferLoad;
@@ -399,7 +399,7 @@ void testResizeRefillBuffers() {
         });
 
     // Attempt to resize buffers and load the remaining data
-    checkBuffers(id, 0, grid, celldata, interface, orientation.n_grain_orientations);
+    checkBuffers(id, 0, grid, celldata, interface, orientation.n_crystal_orientations);
 
     // If there was 1 rank, buffer size should still be 1, as no data was loaded
     // Otherwise, 25 cells should have been added to the buffer in
@@ -540,11 +540,11 @@ void testRemeltActivateCells() {
     CellData<memory_space> celldata(grid, inputs.substrate);
     auto grain_id = celldata.getGrainIDSubview(grid);
     Temperature<memory_space> temperature(grid, inputs.temperature, inputs.print);
-    std::string grain_orientation_file_tmp = checkFileInstalled("GrainOrientationVectors.csv", id);
-    std::vector<std::string> grain_orientation_file;
-    grain_orientation_file.push_back(grain_orientation_file_tmp);
-    Orientation<memory_space> orientation(id, grain_orientation_file, false, inputs.rng_seed, inputs.irf.num_phases,
-                                          irf.solidificationTransformation());
+    std::string crystal_misorientation_file_tmp = checkFileInstalled("CrystalOrientationVectors.csv", id);
+    std::vector<std::string> crystal_misorientation_file;
+    crystal_misorientation_file.push_back(crystal_misorientation_file_tmp);
+    Orientation<memory_space> orientation(id, crystal_misorientation_file, false, inputs.rng_seed,
+                                          inputs.irf.num_phases, irf.solidificationTransformation());
 
     // Cells at Z = 0 are Solid and do not change type. Cells at Z = 1 and 2 melt at a time step corresponding to their
     // Y location in the overall domain (depends on y_offset of the rank) and cool below the liquidus 2 time steps after

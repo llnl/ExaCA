@@ -455,11 +455,12 @@ struct RepresentativeRegion {
         }
     }
 
-    // Calculate misorientation relative to the specified cardinal direction for each grain and store in the vector
+    // Calculate <100> misorientation relative to the specified cardinal direction for each grain and store in the
+    // vector
     template <typename MemorySpace>
-    std::vector<float> getGrainMisorientation(std::string direction, Orientation<MemorySpace> &orientation) {
+    std::vector<float> getCrystalMisorientation(std::string direction, Orientation<MemorySpace> &orientation) {
 
-        std::vector<float> grain_misorientation_vector(number_of_grains);
+        std::vector<float> crystal_misorientation_vector(number_of_grains);
         int direction_int;
         if (direction == "X")
             direction_int = 0;
@@ -469,22 +470,22 @@ struct RepresentativeRegion {
             direction_int = 2;
         else
             throw std::runtime_error(
-                "Error: invalid direction specified in calcGrainMisorientation: should be X, Y, or Z");
-        auto grain_misorientation = orientation.misorientationCalc(direction_int);
+                "Error: invalid direction specified in calcCrystalMisorientation: should be X, Y, or Z");
+        auto crystal_misorientation = orientation.misorientationCalc(direction_int);
         for (int n = 0; n < number_of_grains; n++) {
-            int my_orientation = getGrainOrientation(unique_grain_id_vector[n], orientation.n_grain_orientations);
+            int my_orientation = getCrystalOrientation(unique_grain_id_vector[n], orientation.n_crystal_orientations);
             // Grain misorientation always corresponds to phase 0, even if original crystallographic orientation during
             // initial solidification as phase 1 was different
-            float my_misorientation = grain_misorientation(my_orientation, 0);
-            grain_misorientation_vector[n] = my_misorientation;
+            float my_misorientation = crystal_misorientation(my_orientation, 0);
+            crystal_misorientation_vector[n] = my_misorientation;
         }
-        return grain_misorientation_vector;
+        return crystal_misorientation_vector;
     }
 
     // Create a histogram of orientations for texture determination, using the grain_id values in the volume bounded by
     // [XMin,XMax], [YMin,YMax], [ZMin,ZMax] and excluding and cells that did not undergo melting (layer_id = -1)
     template <typename ViewTypeInt3dHost, typename ViewTypeShort3dHost>
-    auto getOrientationHistogram(int n_grain_orientations, ViewTypeInt3dHost grain_id, ViewTypeShort3dHost layer_id,
+    auto getOrientationHistogram(int n_crystal_orientations, ViewTypeInt3dHost grain_id, ViewTypeShort3dHost layer_id,
                                  ViewTypeShort3dHost phase_id, const int num_phases, bool found_layer_id) {
 
         // Init histogram values to zero
@@ -494,14 +495,14 @@ struct RepresentativeRegion {
                    "melting and solidification as they cannot be differentiated from the regions that were simulated"
                 << std::endl;
         using int_type = typename ViewTypeInt3dHost::value_type;
-        Kokkos::View<int_type **, Kokkos::HostSpace> go_histogram("go_histogram", n_grain_orientations, num_phases);
+        Kokkos::View<int_type **, Kokkos::HostSpace> go_histogram("go_histogram", n_crystal_orientations, num_phases);
         for (int phase_num = 0; phase_num < num_phases; phase_num++) {
             for (int k = z_bounds_cells[0]; k <= z_bounds_cells[1]; k++) {
                 for (int j = y_bounds_cells[0]; j <= y_bounds_cells[1]; j++) {
                     for (int i = x_bounds_cells[0]; i <= x_bounds_cells[1]; i++) {
                         if ((grain_id(k, i, j) != 0) && (layer_id(k, i, j) != -1)) {
                             short my_phase = phase_id(k, i, j);
-                            int go_val = getGrainOrientation(grain_id(k, i, j), n_grain_orientations);
+                            int go_val = getCrystalOrientation(grain_id(k, i, j), n_crystal_orientations);
                             go_histogram(go_val, my_phase)++;
                         }
                     }
@@ -632,24 +633,24 @@ struct RepresentativeRegion {
     }
 
     // Print average misorientation for the region relative to each direction
-    void printMeanMisorientations(std::ofstream &qois, std::vector<float> grain_misorientation_x_vector,
-                                  std::vector<float> grain_misorientation_y_vector,
-                                  std::vector<float> grain_misorientation_z_vector) {
+    void printMeanMisorientations(std::ofstream &qois, std::vector<float> crystal_misorientation_x_vector,
+                                  std::vector<float> crystal_misorientation_y_vector,
+                                  std::vector<float> crystal_misorientation_z_vector) {
 
         std::vector<std::string> misorientation_direction_labels = {"misorientationX", "misorientationY",
                                                                     "misorientationZ"};
         std::vector<std::string> misorientation_direction_labels_short = {"+X", "+Y", "+Z"};
-        float grain_misorientation_sum_x = 0.0;
-        float grain_misorientation_sum_y = 0.0;
-        float grain_misorientation_sum_z = 0.0;
+        float crystal_misorientation_sum_x = 0.0;
+        float crystal_misorientation_sum_y = 0.0;
+        float crystal_misorientation_sum_z = 0.0;
         for (int n = 0; n < number_of_grains; n++) {
-            grain_misorientation_sum_x += grain_misorientation_x_vector[n] * grain_size_vector_microns[n];
-            grain_misorientation_sum_y += grain_misorientation_y_vector[n] * grain_size_vector_microns[n];
-            grain_misorientation_sum_z += grain_misorientation_z_vector[n] * grain_size_vector_microns[n];
+            crystal_misorientation_sum_x += crystal_misorientation_x_vector[n] * grain_size_vector_microns[n];
+            crystal_misorientation_sum_y += crystal_misorientation_y_vector[n] * grain_size_vector_microns[n];
+            crystal_misorientation_sum_z += crystal_misorientation_z_vector[n] * grain_size_vector_microns[n];
         }
-        float avg_misorientation_x = divideCast<float>(grain_misorientation_sum_x, region_size_microns);
-        float avg_misorientation_y = divideCast<float>(grain_misorientation_sum_y, region_size_microns);
-        float avg_misorientation_z = divideCast<float>(grain_misorientation_sum_z, region_size_microns);
+        float avg_misorientation_x = divideCast<float>(crystal_misorientation_sum_x, region_size_microns);
+        float avg_misorientation_y = divideCast<float>(crystal_misorientation_sum_y, region_size_microns);
+        float avg_misorientation_z = divideCast<float>(crystal_misorientation_sum_z, region_size_microns);
         std::string temp;
         temp = "-- Average misorientation (weighted by size) for grains relative to the X direction (in degrees): " +
                std::to_string(avg_misorientation_x) + "\n";
@@ -806,7 +807,7 @@ struct RepresentativeRegion {
         grainplot_pf << "% specimen symmetry: \"43\"" << std::endl;
         grainplot_pf << "% phi1    Phi     phi2    value" << std::endl;
         grainplot_pf << std::fixed << std::setprecision(6);
-        for (int i = 0; i < orientation.n_grain_orientations; i++) {
+        for (int i = 0; i < orientation.n_crystal_orientations; i++) {
             grainplot_pf << orientation.grain_bunge_euler_host(3 * i, 0) << " "
                          << orientation.grain_bunge_euler_host(3 * i + 1, 0) << " "
                          << orientation.grain_bunge_euler_host(3 * i + 2, 0) << " "
@@ -832,7 +833,7 @@ struct RepresentativeRegion {
     std::vector<float> getIPFZColor(int color, Orientation<MemorySpace> &orientation) {
         std::vector<float> ipfz_color(number_of_grains);
         for (int n = 0; n < number_of_grains; n++) {
-            int my_orientation = getGrainOrientation(unique_grain_id_vector[n], orientation.n_grain_orientations);
+            int my_orientation = getCrystalOrientation(unique_grain_id_vector[n], orientation.n_crystal_orientations);
             ipfz_color[n] = orientation.grain_rgb_ipfz_host(3 * my_orientation + color, 0);
         }
         return ipfz_color;
@@ -898,7 +899,7 @@ struct RepresentativeRegion {
                     throw std::runtime_error("Error: Unknown region_orientation input for WriteIPFColoredCrossSection: "
                                              "should be XY, YZ, or XZ");
                 // What orientation does this grain id correspond to? Should be between 0 and NumberOfOrientations-1
-                int go_val = (Kokkos::abs(grain_id(z_loc, x_loc, y_loc)) - 1) % orientation.n_grain_orientations;
+                int go_val = (Kokkos::abs(grain_id(z_loc, x_loc, y_loc)) - 1) % orientation.n_crystal_orientations;
                 // Unlike the vtk data which was zero-indexed (the two solid phase ids were 0 and 1), the grain
                 // structure used by MTEX is phase "1" or "2" - any unindexed points with GOVal = -1 (which are possible
                 // from regions that didn't undergo melting) are assigned phase "0"
@@ -949,9 +950,9 @@ struct RepresentativeRegion {
     }
 
     // Write a csv file of stats for each grain
-    void writePerGrainStats(std::string output_filename, std::vector<float> grain_misorientation_x_vector,
-                            std::vector<float> grain_misorientation_y_vector,
-                            std::vector<float> grain_misorientation_z_vector,
+    void writePerGrainStats(std::string output_filename, std::vector<float> crystal_misorientation_x_vector,
+                            std::vector<float> crystal_misorientation_y_vector,
+                            std::vector<float> crystal_misorientation_z_vector,
                             std::vector<float> build_trans_aspect_ratio, std::vector<float> grain_red,
                             std::vector<float> grain_green, std::vector<float> grain_blue) {
 
@@ -981,8 +982,8 @@ struct RepresentativeRegion {
         for (int n = 0; n < number_of_grains; n++) {
             grain_stats << unique_grain_id_vector[n];
             if (analysis_options_per_grain_stats_yn[0])
-                grain_stats << "," << grain_misorientation_x_vector[n] << "," << grain_misorientation_y_vector[n] << ","
-                            << grain_misorientation_z_vector[n];
+                grain_stats << "," << crystal_misorientation_x_vector[n] << "," << crystal_misorientation_y_vector[n]
+                            << "," << crystal_misorientation_z_vector[n];
             if (analysis_options_per_grain_stats_yn[1])
                 grain_stats << "," << grain_size_vector_microns[n];
             if (analysis_options_per_grain_stats_yn[2])
