@@ -45,6 +45,12 @@ void parseLogFile(std::string log_file, int &nx, int &ny, int &nz, double &delta
         std::cout << "Note: orientation filename specified in log file will be used, overriding value from analysis "
                      "input file"
                   << std::endl;
+
+    std::string crystal_orientation_input_label;
+    if (logdata.contains("GrainOrientationFile"))
+        crystal_orientation_input_label = "GrainOrientationFile";
+    else
+        crystal_orientation_input_label = "CrystalOrientationFile";
     if (logdata["PhaseName"].size() == 2) {
         phase_names.push_back(logdata["PhaseName"][0]);
         phase_names.push_back(logdata["PhaseName"][1]);
@@ -53,13 +59,13 @@ void parseLogFile(std::string log_file, int &nx, int &ny, int &nz, double &delta
         // as materials without a transformation on solidification should only have one orientation file, and materials
         // with a transformation on solidification will have all final grain orientations map to a value from the first
         // file
-        if (logdata["GrainOrientationFile"].size() == 2) {
-            grain_unit_vector_file.push_back(logdata["GrainOrientationFile"][0]);
-            grain_unit_vector_file.push_back(logdata["GrainOrientationFile"][1]);
+        if (logdata[crystal_orientation_input_label].size() == 2) {
+            grain_unit_vector_file.push_back(logdata[crystal_orientation_input_label][0]);
+            grain_unit_vector_file.push_back(logdata[crystal_orientation_input_label][1]);
         }
         else {
-            grain_unit_vector_file.push_back(logdata["GrainOrientationFile"]);
-            grain_unit_vector_file.push_back(logdata["GrainOrientationFile"]);
+            grain_unit_vector_file.push_back(logdata[crystal_orientation_input_label]);
+            grain_unit_vector_file.push_back(logdata[crystal_orientation_input_label]);
         }
         num_phases = 2;
     }
@@ -69,7 +75,7 @@ void parseLogFile(std::string log_file, int &nx, int &ny, int &nz, double &delta
         else
             phase_names.push_back("default");
         num_phases = 1;
-        grain_unit_vector_file.push_back(logdata["GrainOrientationFile"]);
+        grain_unit_vector_file.push_back(logdata[crystal_orientation_input_label]);
     }
     input_data_stream.close();
 }
