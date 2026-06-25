@@ -1,0 +1,11 @@
+{
+    "Regions": {
+        "MidCrossSectionXZ": {
+            "units": "cells",
+            "yBounds": [99,99],
+            "printAvgStats": ["ZExtent","Size"],
+            "printPoleFigureData": false,
+            "printInversePoleFigureData": false
+        }
+    }
+}
