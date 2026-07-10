@@ -1,0 +1,9 @@
+{
+   "function": "power",
+   "coefficients": {
+      "A": 0.000000073,
+      "B": 3.34,
+      "C": 0
+    },
+    "freezing_range": 31.0
+}
