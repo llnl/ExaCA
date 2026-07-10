@@ -56,7 +56,7 @@ void runExaCALayer(int id, int np, int layernumber, int &cycle, Inputs inputs, T
         // recorded
         timers.startCapture();
         cellCapture(cycle, np, grid, irf, celldata, temperature, interface, orientation);
-        checkBuffers(id, cycle, grid, celldata, interface, orientation.n_grain_orientations);
+        checkBuffers(id, cycle, grid, celldata, interface, orientation.n_crystal_orientations);
         timers.stopCapture();
 
         if (np > 1) {

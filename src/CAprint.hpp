@@ -299,7 +299,8 @@ struct Print {
                 intralayer_ofstream.close();
 
             // If necessary, collect/print GrainMisorientation field to separate file
-            if (_inputs.intralayer_grain_misorientation) {
+            if (_inputs.intralayer_crystal_misorientation[0] || _inputs.intralayer_crystal_misorientation[1] ||
+                _inputs.intralayer_crystal_misorientation[2]) {
                 // Get GrainID data for all layers
                 auto grain_id_all_layers_whole_domain =
                     collectViewData(id, np, grid, false, MPI_INT, celldata.grain_id_all_layers);
@@ -309,8 +310,9 @@ struct Print {
                     // Print GrainMisorientation for all layers up to the current layer
                     std::string misorientations_filename = getIntralayerFilename(layernumber, "_Misorientations");
                     std::cout << "Printing file of grain misorientations " << misorientations_filename << std::endl;
-                    printGrainMisorientations(misorientations_filename, grid, grain_id_all_layers_whole_domain,
-                                              cell_type_whole_domain, orientation);
+                    printCrystalMisorientations(misorientations_filename, grid, grain_id_all_layers_whole_domain,
+                                                cell_type_whole_domain, orientation,
+                                                _inputs.intralayer_crystal_misorientation);
                 }
             }
             // Increment intermediate file counter now that all files have been printed
@@ -463,7 +465,8 @@ struct Print {
             }
 
             // If necessary, collect/print GrainMisorientation field to separate file
-            if (_inputs.interlayer_grain_misorientation) {
+            if (_inputs.interlayer_crystal_misorientation[0] || _inputs.interlayer_crystal_misorientation[1] ||
+                _inputs.interlayer_crystal_misorientation[2]) {
                 // Get CellType data for current layer
                 auto cell_type_whole_domain = collectViewData(id, np, grid, true, MPI_INT, celldata.cell_type);
                 if (id == 0) {
@@ -471,8 +474,9 @@ struct Print {
                     std::string misorientations_filename =
                         getInterlayerFilename(layernumber, grid.number_of_layers, false, "_Misorientations");
                     std::cout << "Printing file of grain misorientations " << misorientations_filename << std::endl;
-                    printGrainMisorientations(misorientations_filename, grid, grain_id_all_layers_whole_domain,
-                                              cell_type_whole_domain, orientation);
+                    printCrystalMisorientations(misorientations_filename, grid, grain_id_all_layers_whole_domain,
+                                                cell_type_whole_domain, orientation,
+                                                _inputs.interlayer_crystal_misorientation);
                 }
             }
 
@@ -603,80 +607,96 @@ struct Print {
         und_ofstream.close();
     }
 
-    // On rank 0, print grain misorientation, 0-62 for epitaxial grains and 100-162 for nucleated grains, to a vtk
-    // file. If printing an intermediate state, print -1 for cells that are liquid
+    // On rank 0, print crystal <100> misorientation with cardinal directions, 0-62 for epitaxial grains and 100-162 for
+    // nucleated grains, to a vtk file. If printing an intermediate state, print -1 for cells that are liquid
     template <typename ViewTypeInt3DHost, typename OrientationMemory>
-    void printGrainMisorientations(const std::string misorientations_filename, const Grid &grid,
-                                   ViewTypeInt3DHost grain_id_whole_domain, ViewTypeInt3DHost cell_type_whole_domain,
-                                   Orientation<OrientationMemory> &orientation) {
+    void printCrystalMisorientations(const std::string misorientations_filename, const Grid &grid,
+                                     ViewTypeInt3DHost grain_id_whole_domain, ViewTypeInt3DHost cell_type_whole_domain,
+                                     Orientation<OrientationMemory> &orientation,
+                                     const std::vector<bool> &crystal_misorientation_fields) {
 
-        // Print grain orientations to file - either all layers (print_region = 2), or if in an intermediate state, the
-        // layers up to the current one (print_region = 1) z_end will equal grid.nz if this is the final layer
+        // Print crustal orientations to file - either all layers (print_region = 2), or if in an intermediate state,
+        // the layers up to the current one (print_region = 1) z_end will equal grid.nz if this is the final layer
         int z_end = grid.z_layer_bottom + grid.nz_layer;
         std::ofstream misorientations_ofstream;
         writeHeader(misorientations_ofstream, misorientations_filename, grid, false);
-        misorientations_ofstream << "SCALARS Angle_z short 1" << std::endl;
-        misorientations_ofstream << "LOOKUP_TABLE default" << std::endl;
-
-        // Get grain <100> misorientation relative to the Z direction for each orientation
-        auto grain_misorientation = orientation.misorientationCalc(2);
-        // For cells that are currently liquid (possible only for intermediate state print, as the final state will only
-        // have solid cells), -1 is printed as the misorienatation. Misorientations for grains from the baseplate or
-        // powder layer are between 0-62 (degrees, rounded to nearest integer), and cells that are associated with
-        // nucleated grains are assigned values between 100-162 to differentiate them. Additionally, 200 is printed as
-        // the misorientation for cells in the powder layer that have not been assigned a grain ID.
-        // For prior layers, cell type check is unnecessary as these regions have all solidified
-        for (int k = 0; k < grid.z_layer_bottom; k++) {
-            for (int j = 0; j < grid.ny; j++) {
-                for (int i = 0; i < grid.nx; i++) {
-                    short int_print_val;
-                    if (grain_id_whole_domain(k, i, j) == 0)
-                        int_print_val = 200;
-                    else {
-                        // As of now, either both phases share a grain orientation file - or the second phase
-                        // transformed into the first phase after initial solidification. While the grain misorientation
-                        // view contains values for both phases, the printed values correspond to the "final" grain
-                        // orientation after any solid-solid phase transformation and should correspond to an
-                        // orientation for the primary phase ("phase 0")
-                        int my_orientation =
-                            getGrainOrientation(grain_id_whole_domain(k, i, j), orientation.n_grain_orientations);
-                        if (grain_id_whole_domain(k, i, j) < 0)
-                            int_print_val =
-                                static_cast<short>(std::round(grain_misorientation(my_orientation, 0)) + 100);
-                        else
-                            int_print_val = static_cast<short>(std::round(grain_misorientation(my_orientation, 0)));
+        // Get grain <100> misorientation relative to the toggeled cardinal directions for each orientation
+        for (int dir = 0; dir < 3; dir++) {
+            if (crystal_misorientation_fields[dir]) {
+                // Print field name for the misorientation field
+                std::string field_name;
+                if (dir == 0)
+                    field_name = "x";
+                else if (dir == 1)
+                    field_name = "y";
+                else
+                    field_name = "z";
+                misorientations_ofstream << "SCALARS Angle_" << field_name << " short 1" << std::endl;
+                misorientations_ofstream << "LOOKUP_TABLE default" << std::endl;
+                // Calculate crystal misorientation relative to the desired direction
+                auto crystal_misorientation = orientation.misorientationCalc(dir);
+                // For cells that are currently liquid (possible only for intermediate state print, as the final state
+                // will only have solid cells), -1 is printed as the misorienatation. Misorientations for grains from
+                // the baseplate or powder layer are between 0-62 (degrees, rounded to nearest integer), and cells that
+                // are associated with nucleated grains are assigned values between 100-162 to differentiate them.
+                // Additionally, 200 is printed as the misorientation for cells in the powder layer that have not been
+                // assigned a grain ID. For prior layers, cell type check is unnecessary as these regions have all
+                // solidified
+                for (int k = 0; k < grid.z_layer_bottom; k++) {
+                    for (int j = 0; j < grid.ny; j++) {
+                        for (int i = 0; i < grid.nx; i++) {
+                            short int_print_val;
+                            if (grain_id_whole_domain(k, i, j) == 0)
+                                int_print_val = 200;
+                            else {
+                                // As of now, either both phases share a grain orientation file - or the second phase
+                                // transformed into the first phase after initial solidification. While the grain
+                                // misorientation view contains values for both phases, the printed values correspond to
+                                // the "final" grain orientation after any solid-solid phase transformation and should
+                                // correspond to an orientation for the primary phase ("phase 0")
+                                int my_orientation = getCrystalOrientation(grain_id_whole_domain(k, i, j),
+                                                                           orientation.n_crystal_orientations);
+                                if (grain_id_whole_domain(k, i, j) < 0)
+                                    int_print_val =
+                                        static_cast<short>(std::round(crystal_misorientation(my_orientation, 0)) + 100);
+                                else
+                                    int_print_val =
+                                        static_cast<short>(std::round(crystal_misorientation(my_orientation, 0)));
+                            }
+                            writeData(misorientations_ofstream, int_print_val, _inputs.print_binary, true);
+                        }
                     }
-                    writeData(misorientations_ofstream, int_print_val, _inputs.print_binary, true);
+                    if (!(_inputs.print_binary))
+                        misorientations_ofstream << std::endl;
+                }
+                // For current layer, check cell types to see if -1 should be printed (if this is a print following a
+                // layer, all cells will be solid and no -1s should be written)
+                for (int k = grid.z_layer_bottom; k < z_end; k++) {
+                    for (int j = 0; j < grid.ny; j++) {
+                        for (int i = 0; i < grid.nx; i++) {
+                            short int_print_val;
+                            if (grain_id_whole_domain(k, i, j) == 0)
+                                int_print_val = 200;
+                            else {
+                                int my_orientation = getCrystalOrientation(grain_id_whole_domain(k, i, j),
+                                                                           orientation.n_crystal_orientations);
+                                if (grain_id_whole_domain(k, i, j) < 0)
+                                    int_print_val =
+                                        static_cast<short>(std::round(crystal_misorientation(my_orientation, 0)) + 100);
+                                else
+                                    int_print_val =
+                                        static_cast<short>(std::round(crystal_misorientation(my_orientation, 0)));
+                            }
+                            // Offset in Z as cell type values only exist for current layer
+                            if (cell_type_whole_domain(k - grid.z_layer_bottom, i, j) == Liquid)
+                                int_print_val = -1;
+                            writeData(misorientations_ofstream, int_print_val, _inputs.print_binary, true);
+                        }
+                    }
+                    if (!(_inputs.print_binary))
+                        misorientations_ofstream << std::endl;
                 }
             }
-            if (!(_inputs.print_binary))
-                misorientations_ofstream << std::endl;
-        }
-        // For current layer, check cell types to see if -1 should be printed (if this is a print following a layer, all
-        // cells will be solid and no -1s should be written)
-        for (int k = grid.z_layer_bottom; k < z_end; k++) {
-            for (int j = 0; j < grid.ny; j++) {
-                for (int i = 0; i < grid.nx; i++) {
-                    short int_print_val;
-                    if (grain_id_whole_domain(k, i, j) == 0)
-                        int_print_val = 200;
-                    else {
-                        int my_orientation =
-                            getGrainOrientation(grain_id_whole_domain(k, i, j), orientation.n_grain_orientations);
-                        if (grain_id_whole_domain(k, i, j) < 0)
-                            int_print_val =
-                                static_cast<short>(std::round(grain_misorientation(my_orientation, 0)) + 100);
-                        else
-                            int_print_val = static_cast<short>(std::round(grain_misorientation(my_orientation, 0)));
-                    }
-                    // Offset in Z as cell type values only exist for current layer
-                    if (cell_type_whole_domain(k - grid.z_layer_bottom, i, j) == Liquid)
-                        int_print_val = -1;
-                    writeData(misorientations_ofstream, int_print_val, _inputs.print_binary, true);
-                }
-            }
-            if (!(_inputs.print_binary))
-                misorientations_ofstream << std::endl;
         }
         misorientations_ofstream.close();
     }
@@ -764,7 +784,8 @@ struct Print {
             // were printed, or both were printed
             if (id == 0) {
                 std::vector<std::string> series_aux_filenames;
-                if (_inputs.intralayer_grain_misorientation)
+                if (_inputs.intralayer_crystal_misorientation[0] || _inputs.intralayer_crystal_misorientation[1] ||
+                    _inputs.intralayer_crystal_misorientation[3])
                     series_aux_filenames.push_back("_Misorientations");
                 if (_inputs.intralayer_non_misorientation_fields)
                     series_aux_filenames.push_back("");

@@ -66,7 +66,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/ExaCAconfig.cmake"
 
 # Install data files
 file(GLOB MATERIALS examples/Materials/*)
-file(GLOB SUBSTRATE examples/Substrate/GrainOrientation*.csv)
+file(GLOB SUBSTRATE examples/Substrate/CrystalOrientation*.csv)
 install(FILES ${MATERIALS}
         DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/ExaCA)
 install(FILES ${SUBSTRATE}

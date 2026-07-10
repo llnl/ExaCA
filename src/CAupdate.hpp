@@ -37,7 +37,7 @@ void createOctahedra_NoRemelt(const Grid &grid, CellData<MemorySpace> &celldata,
 
                 const int my_grain_id = grain_id(index);
                 // The orientation for the new grain will depend on its Grain ID
-                const int my_orientation = getGrainOrientation(my_grain_id, orientation.n_grain_orientations);
+                const int my_orientation = getCrystalOrientation(my_grain_id, orientation.n_crystal_orientations);
 
                 temperature.setStartingUndercooling(0, index);
 
@@ -250,7 +250,7 @@ void cellCapture(const int cycle, const int np, const Grid &grid, const Interfac
                                 // Cell capture event
                                 const int my_grain_id = grain_id(index);
                                 const int my_orientation =
-                                    getGrainOrientation(my_grain_id, orientation.n_grain_orientations);
+                                    getCrystalOrientation(my_grain_id, orientation.n_crystal_orientations);
 
                                 // This cell was not at the edge of the temperature field - set indicator to false if
                                 // this is being tracked
@@ -452,7 +452,7 @@ void cellCapture(const int cycle, const int np, const Grid &grid, const Interfac
                                         ghost_grain_id, ghost_octahedron_center_x, ghost_octahedron_center_y,
                                         ghost_octahedron_center_z, ghost_diagonal_length, ghost_phase_id, grid.ny_local,
                                         neighbor_coord_x, neighbor_coord_y, neighbor_coord_z, grid.at_north_boundary,
-                                        grid.at_south_boundary, orientation.n_grain_orientations);
+                                        grid.at_south_boundary, orientation.n_crystal_orientations);
                                     if (!(data_fits_in_buffer)) {
                                         // This cell's data did not fit in the buffer with current size buf_size -
                                         // mark with temporary type
@@ -498,7 +498,7 @@ void cellCapture(const int cycle, const int np, const Grid &grid, const Interfac
                 interface.createNewOctahedron(index, coord_x, coord_y, grid.y_offset, coord_z);
                 // The orientation for the new grain will depend on its Grain ID (nucleated grains have negative
                 // grain_id values)
-                const int my_orientation = getGrainOrientation(my_grain_id, orientation.n_grain_orientations);
+                const int my_orientation = getCrystalOrientation(my_grain_id, orientation.n_crystal_orientations);
                 // Octahedron center is at (cx, cy, cz) - note that the Y coordinate is relative to the domain
                 // origin to keep the coordinate system continuous across ranks
                 const float cx = coord_x + 0.5;
@@ -522,7 +522,7 @@ void cellCapture(const int cycle, const int np, const Grid &grid, const Interfac
                     bool data_fits_in_buffer = interface.loadGhostNodes(
                         ghost_grain_id, ghost_octahedron_center_x, ghost_octahedron_center_y, ghost_octahedron_center_z,
                         ghost_diagonal_length, ghost_phase_id, grid.ny_local, coord_x, coord_y, coord_z,
-                        grid.at_north_boundary, grid.at_south_boundary, orientation.n_grain_orientations);
+                        grid.at_north_boundary, grid.at_south_boundary, orientation.n_crystal_orientations);
                     if (!(data_fits_in_buffer)) {
                         // This cell's data did not fit in the buffer with current size buf_size - mark with
                         // temporary type
@@ -545,7 +545,7 @@ void cellCapture(const int cycle, const int np, const Grid &grid, const Interfac
                 // length
                 bool data_fits_in_buffer = interface.loadGhostNodes(
                     -1, -1.0, -1.0, -1.0, 0.0, 1, grid.ny_local, coord_x, coord_y, coord_z, grid.at_north_boundary,
-                    grid.at_south_boundary, orientation.n_grain_orientations);
+                    grid.at_south_boundary, orientation.n_crystal_orientations);
                 if (!(data_fits_in_buffer)) {
                     // This cell's data did not fit in the buffer with current size buf_size - mark with temporary
                     // type
@@ -563,21 +563,21 @@ void cellCapture(const int cycle, const int np, const Grid &grid, const Interfac
 // Check buffers for overflow and resize/refill as necessary
 template <typename MemorySpace>
 void checkBuffers(const int id, const int cycle, const Grid &grid, CellData<MemorySpace> &celldata,
-                  Interface<MemorySpace> &interface, const int n_grain_orientations) {
+                  Interface<MemorySpace> &interface, const int n_crystal_orientations) {
     // Count the number of cells' in halo regions where the data did not fit into the send buffers
     // Reduce across all ranks, as the same buf_size should be maintained across all ranks
     // If any rank overflowed its buffer size, resize all buffers to the new size plus a padding (default val of 25
     // cells)
     bool resize_performed = interface.resizeBuffers(id, cycle);
     if (resize_performed)
-        refillBuffers(grid, celldata, interface, n_grain_orientations);
+        refillBuffers(grid, celldata, interface, n_crystal_orientations);
 }
 
 // Refill the buffers as necessary starting from the old count size, using the data from cells marked with type
 // ActiveFailedBufferLoad
 template <typename MemorySpace>
 void refillBuffers(const Grid &grid, CellData<MemorySpace> &celldata, Interface<MemorySpace> &interface,
-                   const int n_grain_orientations) {
+                   const int n_crystal_orientations) {
 
     auto grain_id = celldata.getGrainIDSubview(grid);
     auto phase_id = celldata.getPhaseIDSubview(grid);
@@ -598,7 +598,7 @@ void refillBuffers(const Grid &grid, CellData<MemorySpace> &celldata, Interface<
                     bool data_fits_in_buffer = interface.loadGhostNodes(
                         ghost_grain_id, ghost_octahedron_center_x, ghost_octahedron_center_y, ghost_octahedron_center_z,
                         ghost_diagonal_length, ghost_phase_id, grid.ny_local, coord_x, 1, coord_z,
-                        grid.at_north_boundary, grid.at_south_boundary, n_grain_orientations);
+                        grid.at_north_boundary, grid.at_south_boundary, n_crystal_orientations);
                     celldata.cell_type(index_south_buffer) = Active;
                     // If data doesn't fit in the buffer after the resize, warn that buffer data may have been lost
                     interface.checkBufferSize(data_fits_in_buffer);
@@ -606,9 +606,9 @@ void refillBuffers(const Grid &grid, CellData<MemorySpace> &celldata, Interface<
                 else if (celldata.cell_type(index_south_buffer) == LiquidFailedBufferLoad) {
                     // Dummy values for first 4 arguments (Grain ID and octahedron center coordinates), 0 for
                     // diagonal length
-                    bool data_fits_in_buffer =
-                        interface.loadGhostNodes(-1, -1.0, -1.0, -1.0, 0.0, 1, grid.ny_local, coord_x, 1, coord_z,
-                                                 grid.at_north_boundary, grid.at_south_boundary, n_grain_orientations);
+                    bool data_fits_in_buffer = interface.loadGhostNodes(-1, -1.0, -1.0, -1.0, 0.0, 1, grid.ny_local,
+                                                                        coord_x, 1, coord_z, grid.at_north_boundary,
+                                                                        grid.at_south_boundary, n_crystal_orientations);
                     celldata.cell_type(index_south_buffer) = Liquid;
                     // If data doesn't fit in the buffer after the resize, warn that buffer data may have been lost
                     interface.checkBufferSize(data_fits_in_buffer);
@@ -625,7 +625,7 @@ void refillBuffers(const Grid &grid, CellData<MemorySpace> &celldata, Interface<
                     bool data_fits_in_buffer = interface.loadGhostNodes(
                         ghost_grain_id, ghost_octahedron_center_x, ghost_octahedron_center_y, ghost_octahedron_center_z,
                         ghost_diagonal_length, ghost_phase_id, grid.ny_local, coord_x, grid.ny_local - 2, coord_z,
-                        grid.at_north_boundary, grid.at_south_boundary, n_grain_orientations);
+                        grid.at_north_boundary, grid.at_south_boundary, n_crystal_orientations);
                     celldata.cell_type(index_north_buffer) = Active;
                     // If data doesn't fit in the buffer after the resize, warn that buffer data may have been lost
                     interface.checkBufferSize(data_fits_in_buffer);
@@ -635,7 +635,7 @@ void refillBuffers(const Grid &grid, CellData<MemorySpace> &celldata, Interface<
                     // diagonal length
                     bool data_fits_in_buffer = interface.loadGhostNodes(
                         -1, -1.0, -1.0, -1.0, 0.0, 1, grid.ny_local, coord_x, grid.ny_local - 2, coord_z,
-                        grid.at_north_boundary, grid.at_south_boundary, n_grain_orientations);
+                        grid.at_north_boundary, grid.at_south_boundary, n_crystal_orientations);
                     celldata.cell_type(index_north_buffer) = Liquid;
                     // If data doesn't fit in the buffer after the resize, warn that buffer data may have been lost
                     interface.checkBufferSize(data_fits_in_buffer);
@@ -703,7 +703,7 @@ void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &c
                             int my_grain_orientation = static_cast<int>(interface.buffer_south_recv(buf_position, 2));
                             int my_grain_number = static_cast<int>(interface.buffer_south_recv(buf_position, 3));
                             new_grain_id =
-                                getGrainID(my_grain_orientation, my_grain_number, orientation.n_grain_orientations);
+                                getGrainID(my_grain_orientation, my_grain_number, orientation.n_crystal_orientations);
                             new_octahedron_center_x = interface.buffer_south_recv(buf_position, 4);
                             new_octahedron_center_y = interface.buffer_south_recv(buf_position, 5);
                             new_octahedron_center_z = interface.buffer_south_recv(buf_position, 6);
@@ -731,7 +731,7 @@ void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &c
                             int my_grain_orientation = static_cast<int>(interface.buffer_north_recv(buf_position, 2));
                             int my_grain_number = static_cast<int>(interface.buffer_north_recv(buf_position, 3));
                             new_grain_id =
-                                getGrainID(my_grain_orientation, my_grain_number, orientation.n_grain_orientations);
+                                getGrainID(my_grain_orientation, my_grain_number, orientation.n_crystal_orientations);
                             new_octahedron_center_x = interface.buffer_north_recv(buf_position, 4);
                             new_octahedron_center_y = interface.buffer_north_recv(buf_position, 5);
                             new_octahedron_center_z = interface.buffer_north_recv(buf_position, 6);
@@ -749,7 +749,7 @@ void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &c
                         interface.octahedron_center(3 * index) = new_octahedron_center_x;
                         interface.octahedron_center(3 * index + 1) = new_octahedron_center_y;
                         interface.octahedron_center(3 * index + 2) = new_octahedron_center_z;
-                        int my_orientation = getGrainOrientation(grain_id(index), orientation.n_grain_orientations);
+                        int my_orientation = getCrystalOrientation(grain_id(index), orientation.n_crystal_orientations);
                         interface.diagonal_length(index) = static_cast<float>(new_diagonal_length);
                         phase_id(index) = new_phase_id;
                         // Cell center - note that the Y coordinate is relative to the domain origin to keep the

@@ -53,7 +53,7 @@ void testSmallDirS() {
     InterfacialResponseFunction irf(inputs.domain.deltat, grid.deltax, inputs.irf);
 
     // Initialize grain orientations
-    Orientation<memory_space> orientation(id, inputs.grain_orientation_file, false);
+    Orientation<memory_space> orientation(id, inputs.crystal_orientation_file, false);
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Initialize cell types, grain IDs, and layer IDs
@@ -131,7 +131,7 @@ void testSmallEquiaxedGrain() {
     InterfacialResponseFunction irf(inputs.domain.deltat, grid.deltax, inputs.irf);
 
     // Initialize grain orientations
-    Orientation<memory_space> orientation(id, inputs.grain_orientation_file, false);
+    Orientation<memory_space> orientation(id, inputs.crystal_orientation_file, false);
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Initialize cell types, grain IDs, and layer IDs

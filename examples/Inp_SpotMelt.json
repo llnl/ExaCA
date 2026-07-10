@@ -1,7 +1,7 @@
 {
    "SimulationType": "Spot",
    "MaterialFileName": "Inconel625.json",
-   "GrainOrientationFile": "GrainOrientationVectors.csv",
+   "CrystalOrientationFile": "CrystalOrientationVectors.csv",
    "RandomSeed": 0,
    "Domain": {
        "CellSize": 1,
@@ -28,11 +28,11 @@
       "PrintExaConstitSize": 0,
       "Intralayer": {
           "Increment": 2000,
-          "Fields": ["GrainMisorientation", "MeltTimeStep", "CritTimeStep"],
+          "Fields": ["CrystalMisorientationZ", "MeltTimeStep", "CritTimeStep"],
           "PrintIdleFrames": true
       },
       "Interlayer": {
-          "Fields": ["GrainID", "LayerID", "GrainMisorientation"]
+          "Fields": ["GrainID", "LayerID", "CrystalMisorientationZ"]
       }
    }
 }

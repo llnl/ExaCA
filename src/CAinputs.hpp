@@ -25,7 +25,7 @@
 struct Inputs {
 
     std::string simulation_type = "", material_filename = "";
-    std::vector<std::string> grain_orientation_file = {};
+    std::vector<std::string> crystal_orientation_file = {};
     unsigned long rng_seed = 0.0;
     DomainInputs domain;
     NucleationInputs nucleation;
@@ -60,7 +60,15 @@ struct Inputs {
         // Get interfacial response function coefficients and freezing range from the material input file
         parseIRF(id);
         // Path to file of grain orientations based on install/source location
-        std::vector<std::string> grain_orientation_file_read;
+        std::vector<std::string> crystal_orientation_file_read;
+        std::string crystallographic_input_name = "CrystalOrientationFile";
+        if (input_data.contains("GrainOrientationFile")) {
+            if (id == 0)
+                std::cout << "Warning: Input `GrainOrientationFile` has been renamed `CrystalOrientationFile`; "
+                             "compatibility with the old name will be removed in a future release"
+                          << std::endl;
+            crystallographic_input_name = "GrainOrientationFile";
+        }
         // For two phase problems, each grain is associated with a crystallographic orientation and a phase
         // One orientation file, no transformation: one orientation per grain, no change during solidification (same as
         // single phase) One orientation file, solidification transformation: randomly selected grain orientation from
@@ -72,29 +80,29 @@ struct Inputs {
         // orientations on solidification If one orientation file is given, this is used for any phases in the material.
         // If two are given, this must be a two phase problem and the solidification transformation rule must be
         // selected
-        if (input_data["GrainOrientationFile"].size() == 1) {
-            grain_orientation_file_read.push_back(input_data["GrainOrientationFile"]);
+        if (input_data[crystallographic_input_name].size() == 1) {
+            crystal_orientation_file_read.push_back(input_data[crystallographic_input_name]);
             if (irf.num_phases == 2)
-                grain_orientation_file_read.push_back(input_data["GrainOrientationFile"]);
+                crystal_orientation_file_read.push_back(input_data[crystallographic_input_name]);
         }
-        else if (input_data["GrainOrientationFile"].size() == 2) {
+        else if (input_data[crystallographic_input_name].size() == 2) {
             if ((irf.num_phases == 1) && (id == 0))
-                throw std::runtime_error("Error: Only one grain orientation file should be specified for a material "
+                throw std::runtime_error("Error: Only one crystal orientation file should be specified for a material "
                                          "with one interfacial response function");
             if ((irf.transformation == irf.none) && (id == 0))
-                throw std::runtime_error("Error: Only one grain orientation file should be specified for a material "
+                throw std::runtime_error("Error: Only one crystal orientation file should be specified for a material "
                                          "without a phase transformation rule");
-            grain_orientation_file_read.push_back(input_data["GrainOrientationFile"][0]);
-            grain_orientation_file_read.push_back(input_data["GrainOrientationFile"][1]);
+            crystal_orientation_file_read.push_back(input_data[crystallographic_input_name][0]);
+            crystal_orientation_file_read.push_back(input_data[crystallographic_input_name][1]);
         }
         else {
             if (id == 0)
                 throw std::runtime_error("Error: No more than two grain orientation files should be given");
         }
         for (int phase_num = 0; phase_num < irf.num_phases; phase_num++) {
-            std::string grain_orientation_file_tmp = checkFileInstalled(grain_orientation_file_read[phase_num], id);
-            checkFileNotEmpty(grain_orientation_file_tmp);
-            grain_orientation_file.push_back(grain_orientation_file_tmp);
+            std::string crystal_orientation_file_tmp = checkFileInstalled(crystal_orientation_file_read[phase_num], id);
+            checkFileNotEmpty(crystal_orientation_file_tmp);
+            crystal_orientation_file.push_back(crystal_orientation_file_tmp);
         }
         // Seed for random number generator (defaults to 0 if not given)
         if (input_data.contains("RandomSeed"))
@@ -573,10 +581,21 @@ struct Inputs {
                     valid_field = true;
                 }
             }
-            if ((!valid_field) && (id == 0)) {
-                std::string error = "Error: Field '" + field_read + "' from " + fieldtype +
-                                    " Printing section of input file is not recognized by ExaCA";
-                throw std::runtime_error(error);
+            if (!valid_field) {
+                // Check for deprecated input GrainMisorientation
+                if (field_read == "GrainMisorientation") {
+                    if (id == 0)
+                        std::cout << "Warning: Output field `GrainMisorientation` has been renamed "
+                                     "CrystalMisorientationZ; use of field name `GrainMisorientation` has been "
+                                     "deprecated and will be removed in a future release"
+                                  << std::endl;
+                    print_fields_given[5] = true;
+                }
+                else if (id == 0) {
+                    std::string error = "Error: Field '" + field_read + "' from " + fieldtype +
+                                        " Printing section of input file is not recognized by ExaCA";
+                    throw std::runtime_error(error);
+                }
             }
         }
         return print_fields_given;
@@ -626,27 +645,31 @@ struct Inputs {
                 print.intralayer_layer_id = true;
             if (print_fields_intralayer[2])
                 print.intralayer_phase_id = true;
-            if (print_fields_intralayer[3])
-                print.intralayer_grain_misorientation = true;
-            if (print_fields_intralayer[4])
-                print.intralayer_undercooling_current = true;
-            if (print_fields_intralayer[5])
-                print.intralayer_undercooling_solidification_start = true;
+            for (int dir = 3; dir < 6; dir++) {
+                if (print_fields_intralayer[dir])
+                    print.intralayer_crystal_misorientation.push_back(true);
+                else
+                    print.intralayer_crystal_misorientation.push_back(false);
+            }
             if (print_fields_intralayer[6])
-                print.intralayer_melt_pool_edge = true;
+                print.intralayer_undercooling_current = true;
             if (print_fields_intralayer[7])
-                print.intralayer_melt_time_step = true;
+                print.intralayer_undercooling_solidification_start = true;
             if (print_fields_intralayer[8])
-                print.intralayer_crit_time_step = true;
+                print.intralayer_melt_pool_edge = true;
             if (print_fields_intralayer[9])
-                print.intralayer_undercooling_change = true;
+                print.intralayer_melt_time_step = true;
             if (print_fields_intralayer[10])
-                print.intralayer_cell_type = true;
+                print.intralayer_crit_time_step = true;
             if (print_fields_intralayer[11])
-                print.intralayer_diagonal_length = true;
+                print.intralayer_undercooling_change = true;
             if (print_fields_intralayer[12])
-                print.intralayer_solidification_event_counter = true;
+                print.intralayer_cell_type = true;
             if (print_fields_intralayer[13])
+                print.intralayer_diagonal_length = true;
+            if (print_fields_intralayer[14])
+                print.intralayer_solidification_event_counter = true;
+            if (print_fields_intralayer[15])
                 print.intralayer_number_of_solidification_events = true;
 
             // True if any fields are printed
@@ -657,7 +680,7 @@ struct Inputs {
             }
             // Will fields other than grain misorientations be printed?
             for (int n = 0; n < num_print_intralayer_inputs; n++) {
-                if ((n != 3) && (print_fields_intralayer[n]))
+                if (((n < 3) || (n > 5)) && (print_fields_intralayer[n]))
                     print.intralayer_non_misorientation_fields = true;
             }
         }
@@ -703,34 +726,38 @@ struct Inputs {
             print.interlayer_layer_id = true;
         if (print_fields_interlayer[2])
             print.interlayer_phase_id = true;
-        if (print_fields_interlayer[3])
-            print.interlayer_grain_misorientation = true;
-        if (print_fields_interlayer[4])
-            print.interlayer_undercooling_current = true;
-        if (print_fields_interlayer[5])
-            print.interlayer_undercooling_solidification_start = true;
+        for (int dir = 3; dir < 6; dir++) {
+            if (print_fields_interlayer[dir])
+                print.interlayer_crystal_misorientation.push_back(true);
+            else
+                print.interlayer_crystal_misorientation.push_back(false);
+        }
         if (print_fields_interlayer[6])
-            print.interlayer_melt_pool_edge = true;
+            print.interlayer_undercooling_current = true;
         if (print_fields_interlayer[7])
-            print.interlayer_melt_time_step = true;
+            print.interlayer_undercooling_solidification_start = true;
         if (print_fields_interlayer[8])
-            print.interlayer_crit_time_step = true;
+            print.interlayer_melt_pool_edge = true;
         if (print_fields_interlayer[9])
-            print.interlayer_undercooling_change = true;
+            print.interlayer_melt_time_step = true;
         if (print_fields_interlayer[10])
-            print.interlayer_cell_type = true;
+            print.interlayer_crit_time_step = true;
         if (print_fields_interlayer[11])
-            print.interlayer_diagonal_length = true;
+            print.interlayer_undercooling_change = true;
         if (print_fields_interlayer[12])
-            print.interlayer_solidification_event_counter = true;
+            print.interlayer_cell_type = true;
         if (print_fields_interlayer[13])
+            print.interlayer_diagonal_length = true;
+        if (print_fields_interlayer[14])
+            print.interlayer_solidification_event_counter = true;
+        if (print_fields_interlayer[15])
             print.interlayer_number_of_solidification_events = true;
         if ((print.interlayer_grain_id) || (print.interlayer_phase_id) || (print.interlayer_undercooling_current) ||
             (print.interlayer_undercooling_solidification_start))
             print.interlayer_full = true;
-        // First 7 inputs are full domain inputs - check if any of the others were toggled
+        // First 9 inputs are full domain inputs - check if any of the others were toggled
         int num_interlayer_current_inputs = print_fields_interlayer.size();
-        for (int n = 7; n < num_interlayer_current_inputs; n++) {
+        for (int n = 9; n < num_interlayer_current_inputs; n++) {
             if (print_fields_interlayer[n])
                 print.interlayer_current = true;
         }
@@ -774,16 +801,17 @@ struct Inputs {
             exaca_log << "   \"MaterialFileName\": \"" << material_filename << "\"," << std::endl;
             if (irf.num_phases == 1) {
                 exaca_log << "   \"PhaseName\": \"" << irf.phase_names[0] << "\"," << std::endl;
-                exaca_log << "   \"GrainOrientationFile\": \"" << grain_orientation_file[0] << "\"," << std::endl;
+                exaca_log << "   \"CrystalOrientationFile\": \"" << crystal_orientation_file[0] << "\"," << std::endl;
             }
             else if (irf.num_phases == 2) {
                 exaca_log << "   \"PhaseName\": [\"" << irf.phase_names[0] << "\", \"" << irf.phase_names[1] << "\"],"
                           << std::endl;
                 if (irf.transformation == irf.solidification)
-                    exaca_log << "   \"GrainOrientationFile\": [\"" << grain_orientation_file[0] << "\", \""
-                              << grain_orientation_file[1] << "\"]," << std::endl;
+                    exaca_log << "   \"CrystalOrientationFile\": [\"" << crystal_orientation_file[0] << "\", \""
+                              << crystal_orientation_file[1] << "\"]," << std::endl;
                 else
-                    exaca_log << "   \"GrainOrientationFile\": \"" << grain_orientation_file[0] << "\"," << std::endl;
+                    exaca_log << "   \"CrystalOrientationFile\": \"" << crystal_orientation_file[0] << "\","
+                              << std::endl;
             }
             exaca_log << "   \"Domain\": {" << std::endl;
             exaca_log << "      \"Nx\": " << grid.nx << "," << std::endl;

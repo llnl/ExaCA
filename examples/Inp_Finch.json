@@ -36,7 +36,7 @@
     "ExaCA": {
         "SimulationType": "FromFinch",
         "MaterialFileName": "Inconel625.json",
-        "GrainOrientationFile": "GrainOrientationVectors.csv",
+        "CrystalOrientationFile": "CrystalOrientationVectors.csv",
         "RandomSeed": 0,
         "Domain": {
             "CellSize": 3,
@@ -61,7 +61,7 @@
             "PrintBinary": true,
             "PrintExaConstitSize": 0,
             "Interlayer": {
-                "Fields": ["GrainID", "LayerID", "GrainMisorientation"]
+                "Fields": ["GrainID", "LayerID", "CrystalMisorientationZ"]
             }
         }
     }

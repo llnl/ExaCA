@@ -1,7 +1,7 @@
 {
    "SimulationType": "Spot",
    "MaterialFileName": "SS316L_AusteniteFerrite.json",
-   "GrainOrientationFile": "GrainOrientationVectors.csv",
+   "CrystalOrientationFile": "CrystalOrientationVectors.csv",
    "RandomSeed": 0,
    "Domain": {
        "CellSize": 1,
@@ -26,7 +26,7 @@
        "PrintBinary": false,
        "PrintExaConstitSize": 0,
        "Interlayer": {
-           "Fields": ["GrainID", "PhaseID", "GrainMisorientation"]
+           "Fields": ["GrainID", "PhaseID", "CrystalMisorientationZ"]
        }
    }
 }

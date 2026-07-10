@@ -25,7 +25,7 @@ void writeTestData(std::string input_filename, int print_version) {
     test_data_file << "{" << std::endl;
     test_data_file << "   \"SimulationType\": \"FromFile\"," << std::endl;
     test_data_file << "   \"MaterialFileName\": \"Inconel625.json\"," << std::endl;
-    test_data_file << "   \"GrainOrientationFile\": \"GrainOrientationVectors.csv\"," << std::endl;
+    test_data_file << "   \"CrystalOrientationFile\": \"CrystalOrientationVectors.csv\"," << std::endl;
     test_data_file << "   \"RandomSeed\": 2," << std::endl;
     test_data_file << "   \"Domain\": {" << std::endl;
     test_data_file << "      \"CellSize\": 1," << std::endl;
@@ -53,7 +53,7 @@ void writeTestData(std::string input_filename, int print_version) {
     test_data_file << "      \"PathToOutput\": \"ExaCA\"," << std::endl;
     test_data_file << "      \"OutputFile\": \"Test\"," << std::endl;
     test_data_file << "      \"PrintBinary\": true," << std::endl;
-    // two different permutations of print outputs
+    // two different permutations of print outputs - deprecated and non-deprecated GrainMisorientation
     if (print_version == 0) {
         test_data_file << "      \"PrintExaConstitSize\": 0," << std::endl;
         test_data_file << "      \"Intralayer\": {" << std::endl;
@@ -72,7 +72,9 @@ void writeTestData(std::string input_filename, int print_version) {
     else if (print_version == 1) {
         test_data_file << "      \"PrintExaConstitSize\": 500," << std::endl;
         test_data_file << "      \"Interlayer\": {" << std::endl;
-        test_data_file << "          \"Fields\": [\"GrainMisorientation\",\"GrainID\",\"LayerID\"]" << std::endl;
+        test_data_file
+            << "          \"Fields\": [\"CrystalMisorientationX\",\"CrystalMisorientationY\",\"GrainID\",\"LayerID\"]"
+            << std::endl;
         test_data_file << "      }" << std::endl;
     }
     test_data_file << "   }" << std::endl;
@@ -178,7 +180,9 @@ void testInputs(int print_version) {
             EXPECT_FALSE(inputs.print.intralayer_idle_frames);
             EXPECT_FALSE(inputs.print.intralayer_grain_id);
             EXPECT_FALSE(inputs.print.intralayer_layer_id);
-            EXPECT_TRUE(inputs.print.intralayer_grain_misorientation);
+            EXPECT_FALSE(inputs.print.intralayer_crystal_misorientation[0]);
+            EXPECT_FALSE(inputs.print.intralayer_crystal_misorientation[1]);
+            EXPECT_TRUE(inputs.print.intralayer_crystal_misorientation[2]);
             EXPECT_FALSE(inputs.print.intralayer_undercooling_current);
             EXPECT_FALSE(inputs.print.intralayer_melt_time_step);
             EXPECT_FALSE(inputs.print.intralayer_crit_time_step);
@@ -191,7 +195,9 @@ void testInputs(int print_version) {
             EXPECT_FALSE(inputs.print.interlayer_current);
             EXPECT_TRUE(inputs.print.interlayer_grain_id);
             EXPECT_TRUE(inputs.print.interlayer_layer_id);
-            EXPECT_TRUE(inputs.print.interlayer_grain_misorientation);
+            EXPECT_FALSE(inputs.print.interlayer_crystal_misorientation[0]);
+            EXPECT_FALSE(inputs.print.interlayer_crystal_misorientation[1]);
+            EXPECT_TRUE(inputs.print.interlayer_crystal_misorientation[2]);
             EXPECT_FALSE(inputs.print.interlayer_undercooling_current);
             EXPECT_FALSE(inputs.print.interlayer_melt_time_step);
             EXPECT_FALSE(inputs.print.interlayer_crit_time_step);
@@ -218,7 +224,9 @@ void testInputs(int print_version) {
             EXPECT_TRUE(inputs.print.intralayer_idle_frames);
             EXPECT_FALSE(inputs.print.intralayer_grain_id);
             EXPECT_FALSE(inputs.print.intralayer_layer_id);
-            EXPECT_TRUE(inputs.print.intralayer_grain_misorientation);
+            EXPECT_FALSE(inputs.print.intralayer_crystal_misorientation[0]);
+            EXPECT_FALSE(inputs.print.intralayer_crystal_misorientation[1]);
+            EXPECT_TRUE(inputs.print.intralayer_crystal_misorientation[2]);
             EXPECT_FALSE(inputs.print.intralayer_undercooling_current);
             EXPECT_TRUE(inputs.print.intralayer_melt_time_step);
             EXPECT_TRUE(inputs.print.intralayer_crit_time_step);
@@ -231,7 +239,9 @@ void testInputs(int print_version) {
             EXPECT_FALSE(inputs.print.interlayer_current);
             EXPECT_TRUE(inputs.print.interlayer_grain_id);
             EXPECT_TRUE(inputs.print.interlayer_layer_id);
-            EXPECT_TRUE(inputs.print.interlayer_grain_misorientation);
+            EXPECT_FALSE(inputs.print.interlayer_crystal_misorientation[0]);
+            EXPECT_FALSE(inputs.print.interlayer_crystal_misorientation[1]);
+            EXPECT_TRUE(inputs.print.interlayer_crystal_misorientation[2]);
             EXPECT_FALSE(inputs.print.interlayer_undercooling_current);
             EXPECT_FALSE(inputs.print.interlayer_melt_time_step);
             EXPECT_FALSE(inputs.print.interlayer_crit_time_step);
@@ -263,7 +273,8 @@ void testInputs(int print_version) {
                 EXPECT_TRUE(inputs.print.intralayer_idle_frames);
                 EXPECT_TRUE(inputs.print.intralayer_grain_id);
                 EXPECT_TRUE(inputs.print.intralayer_layer_id);
-                EXPECT_FALSE(inputs.print.intralayer_grain_misorientation);
+                for (int dir = 0; dir < 2; dir++)
+                    EXPECT_FALSE(inputs.print.intralayer_crystal_misorientation[dir]);
                 EXPECT_FALSE(inputs.print.intralayer_undercooling_current);
                 EXPECT_TRUE(inputs.print.intralayer_melt_time_step);
                 EXPECT_TRUE(inputs.print.intralayer_crit_time_step);
@@ -276,7 +287,9 @@ void testInputs(int print_version) {
                 EXPECT_FALSE(inputs.print.interlayer_current);
                 EXPECT_TRUE(inputs.print.interlayer_grain_id);
                 EXPECT_TRUE(inputs.print.interlayer_layer_id);
-                EXPECT_TRUE(inputs.print.interlayer_grain_misorientation);
+                EXPECT_FALSE(inputs.print.interlayer_crystal_misorientation[0]);
+                EXPECT_FALSE(inputs.print.interlayer_crystal_misorientation[1]);
+                EXPECT_TRUE(inputs.print.interlayer_crystal_misorientation[2]);
                 EXPECT_TRUE(inputs.print.interlayer_undercooling_current);
                 EXPECT_FALSE(inputs.print.interlayer_melt_time_step);
                 EXPECT_FALSE(inputs.print.interlayer_crit_time_step);
@@ -294,7 +307,9 @@ void testInputs(int print_version) {
                 EXPECT_FALSE(inputs.print.interlayer_current);
                 EXPECT_TRUE(inputs.print.interlayer_grain_id);
                 EXPECT_TRUE(inputs.print.interlayer_layer_id);
-                EXPECT_TRUE(inputs.print.interlayer_grain_misorientation);
+                EXPECT_TRUE(inputs.print.interlayer_crystal_misorientation[0]);
+                EXPECT_TRUE(inputs.print.interlayer_crystal_misorientation[1]);
+                EXPECT_FALSE(inputs.print.interlayer_crystal_misorientation[2]);
                 EXPECT_FALSE(inputs.print.interlayer_undercooling_current);
                 EXPECT_FALSE(inputs.print.interlayer_melt_time_step);
                 EXPECT_FALSE(inputs.print.interlayer_crit_time_step);

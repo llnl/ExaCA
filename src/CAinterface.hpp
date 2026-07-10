@@ -274,7 +274,7 @@ struct Interface {
                         const float ghost_octahedron_center_y, const float ghost_octahedron_center_z,
                         const float ghost_diagonal_length, const int ghost_phase_id, const int ny_local,
                         const int coord_x, const int coord_y, const int coord_z, const bool at_north_boundary,
-                        const bool at_south_boundary, const int n_grain_orientations) const {
+                        const bool at_south_boundary, const int n_crystal_orientations) const {
         bool data_fits_in_buffer = true;
         if ((coord_y == 1) && (!(at_south_boundary))) {
             int ghost_position_south = Kokkos::atomic_fetch_add(&send_size_south(0), 1);
@@ -284,9 +284,9 @@ struct Interface {
                 buffer_south_send(ghost_position_south, 0) = static_cast<float>(coord_x);
                 buffer_south_send(ghost_position_south, 1) = static_cast<float>(coord_z);
                 buffer_south_send(ghost_position_south, 2) =
-                    static_cast<float>(getGrainOrientation(ghost_grain_id, n_grain_orientations, false));
+                    static_cast<float>(getCrystalOrientation(ghost_grain_id, n_crystal_orientations, false));
                 buffer_south_send(ghost_position_south, 3) =
-                    static_cast<float>(getGrainNumber(ghost_grain_id, n_grain_orientations));
+                    static_cast<float>(getGrainNumber(ghost_grain_id, n_crystal_orientations));
                 buffer_south_send(ghost_position_south, 4) = ghost_octahedron_center_x;
                 buffer_south_send(ghost_position_south, 5) = ghost_octahedron_center_y;
                 buffer_south_send(ghost_position_south, 6) = ghost_octahedron_center_z;
@@ -302,9 +302,9 @@ struct Interface {
                 buffer_north_send(ghost_position_north, 0) = static_cast<float>(coord_x);
                 buffer_north_send(ghost_position_north, 1) = static_cast<float>(coord_z);
                 buffer_north_send(ghost_position_north, 2) =
-                    static_cast<float>(getGrainOrientation(ghost_grain_id, n_grain_orientations, false));
+                    static_cast<float>(getCrystalOrientation(ghost_grain_id, n_crystal_orientations, false));
                 buffer_north_send(ghost_position_north, 3) =
-                    static_cast<float>(getGrainNumber(ghost_grain_id, n_grain_orientations));
+                    static_cast<float>(getGrainNumber(ghost_grain_id, n_crystal_orientations));
                 buffer_north_send(ghost_position_north, 4) = ghost_octahedron_center_x;
                 buffer_north_send(ghost_position_north, 5) = ghost_octahedron_center_y;
                 buffer_north_send(ghost_position_north, 6) = ghost_octahedron_center_z;

@@ -194,7 +194,7 @@ int main(int argc, char *argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
 
         // Initialize grain orientations
-        Orientation<memory_space> orientation(id, inputs.grain_orientation_file, false, inputs.rng_seed,
+        Orientation<memory_space> orientation(id, inputs.crystal_orientation_file, false, inputs.rng_seed,
                                               inputs.irf.num_phases, irf.solidificationTransformation());
         MPI_Barrier(MPI_COMM_WORLD);
 
