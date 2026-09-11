@@ -102,8 +102,9 @@ getFinchData(const int, const int, const int first_finch_simulation, const int n
         }
 
         // Append this layer's solidification data to input_temperature_data
-        app.appendSolidificationData(input_temperature_data, first_value_finch, last_value_finch, finch_input_file_num,
-                                     num_finch_simulations);
+        app.appendSolidificationData(input_temperature_data, MPI_COMM_WORLD, finch_grid, finch_inputs.sampling,
+                                     first_value_finch, last_value_finch, finch_input_file_num, num_finch_simulations);
+
         // If performing multiple finch simulations during initialization, fill first/last_value_finch with values for
         // repeated data
         if (num_finch_simulations > 1) {
