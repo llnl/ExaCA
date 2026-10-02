@@ -122,7 +122,7 @@ void testCellDataInit_Constrained_Automatic(std::string input_surface_init_mode)
     // Check appropriate initialization of celldata input
     EXPECT_DOUBLE_EQ(inputs.substrate.fract_surface_sites_active, celldata._inputs.fract_surface_sites_active);
     // Initialize substrate grains
-    celldata.initSubstrate_Directional(id, grid, inputs.rng_seed);
+    celldata.initSubstrate_Directional(id, np, grid, inputs.rng_seed);
     // Copy CellType, GrainID views to host to check values
     auto cell_type_host = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), celldata.cell_type);
     auto grain_id_all_layers_host =
@@ -175,7 +175,7 @@ void testCellDataInit_Constrained_Custom() {
     CellData<memory_space> celldata(grid, inputs.substrate);
 
     // Place substrate grains
-    celldata.initSubstrate_Directional(id, grid, 0.0);
+    celldata.initSubstrate_Directional(id, np, grid, 0.0);
 
     // Copy CellType, GrainID views to host to check values
     auto cell_type_host = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), celldata.cell_type);

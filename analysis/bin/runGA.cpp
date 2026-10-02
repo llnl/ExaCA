@@ -64,8 +64,9 @@ int main(int argc, char *argv[]) {
         double deltax;
         int nx, ny, nz, number_of_layers, num_phases;
         std::vector<double> xyz_bounds(6);
+        bool is_periodic;
         parseLogFile(log_file, nx, ny, nz, deltax, number_of_layers, xyz_bounds, grain_unit_vector_file, phase_names,
-                     num_phases, false);
+                     num_phases, false, is_periodic);
         std::cout << "Parsed log file" << std::endl;
 
         // Allocate memory blocks for grain_id and layer_id data
@@ -98,7 +99,7 @@ int main(int argc, char *argv[]) {
             // Create region
             std::string region_name = it.key();
             RepresentativeRegion representativeregion(analysis_data, region_name, nx, ny, nz, deltax, xyz_bounds,
-                                                      grain_id, phase_id);
+                                                      grain_id, phase_id, is_periodic);
             std::string base_filename_this_region = base_filename + "_" + region_name;
 
             // Output file stream for quantities of interest

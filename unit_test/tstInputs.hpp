@@ -323,6 +323,8 @@ void testInputs(int print_version) {
         grid.x_max = 0.0;
         grid.y_max = 0.0;
         grid.z_max = 0.0;
+        grid.ny_local_allranks[0] = 1;
+        grid.y_offset_allranks[0] = 0;
         Timers timers(0);
 
         // Print log file

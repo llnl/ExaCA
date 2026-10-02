@@ -29,6 +29,9 @@ struct Grid {
     // 1D decomposition in Y: Each MPI rank has a subset consisting of of ny_local cells, out of ny cells in Y
     // Each MPI rank's subdomain is offset by y_offset cells from the lower bound of the domain in Y
     int ny_local, y_offset;
+    std::vector<int> ny_local_allranks, y_offset_allranks;
+    // Periodicity in X and Y (only for directional solidification simulations)
+    bool is_periodic = false;
     // Variables characterizing process IDs of neighboring MPI ranks on the grid
     // Positive Y/NegativeY directions are North/South
     int neighbor_rank_north, neighbor_rank_south;
@@ -59,6 +62,8 @@ struct Grid {
         , z_max_layer(
               view_type_double_host(Kokkos::ViewAllocateWithoutInitializing("z_max_layer"), number_of_layers_temp)) {
         number_of_layers = number_of_layers_temp;
+        ny_local_allranks.resize(1);
+        y_offset_allranks.resize(1);
     };
 
     // Creates grid struct from Finch grid - currently only supports simulations where one set of temperature data is
@@ -101,10 +106,10 @@ struct Grid {
         // Domain decomposition
         decomposeDomain(id, np, "FromFinch");
         MPI_Barrier(MPI_COMM_WORLD);
+        // Print domain info to console
         if (id == 0)
-            std::cout << "Mesh initialized: initial domain size is " << nz_layer << " out of " << nz
-                      << " total cells in the Z direction" << std::endl;
-    };
+            printDomainBounds(np);
+    }
 
     // If domain bounds were specified, override domain bounds from the data in the files
     void checkOverrideXYZBounds(const int id, SubstrateInputs _s_inputs, TemperatureInputs _t_inputs) {
@@ -153,6 +158,7 @@ struct Grid {
         layer_height = _inputs.layer_height;
         layer_height = _inputs.layer_height;
         number_of_layers = number_of_layers_temp;
+        is_periodic = _inputs.is_periodic;
 
         // Obtain global domain bounds
         // For problem type FromFile, need to parse all temperature data files to obtain domain bounds for
@@ -186,26 +192,42 @@ struct Grid {
                 y_max = (ny - 1) * deltax;
                 z_max = (nz - 1) * deltax;
                 z_max_layer(0) = z_max;
+                if (is_periodic) {
+                    x_min = x_min - deltax;
+                    x_max = x_max + deltax;
+                    nx += 2;
+                    y_min = y_min - deltax;
+                    y_max = y_max + deltax;
+                }
             }
         }
         // Domain decomposition
         decomposeDomain(id, np, simulation_type);
-        MPI_Barrier(MPI_COMM_WORLD);
+        // After decomposition, add padding to global domain at +/-Y edges for periodic boundary if needed
+        if (is_periodic)
+            ny += 2;
+        // Print domain info to console
         if (id == 0)
-            std::cout << "Mesh initialized: initial domain size is " << nz_layer << " out of " << nz
-                      << " total cells in the Z direction" << std::endl;
+            printDomainBounds(np);
     };
+
+    // Called on rank 0 only
+    void printDomainBounds(const int np) {
+        std::cout << "Domain size: " << nx << " by " << ny << " by " << nz << std::endl;
+        std::cout << "X Limits of domain: " << x_min << " and " << x_max << std::endl;
+        std::cout << "Y Limits of domain: " << y_min << " and " << y_max << std::endl;
+        std::cout << "Z Limits of domain: " << z_min << " and " << z_max << std::endl;
+        std::cout << "================================================================" << std::endl;
+        std::cout << "Mesh initialized: initial domain size is " << nz_layer << " out of " << nz
+                  << " total cells in the Z direction" << std::endl;
+        for (int pid = 0; pid < np; pid++)
+            std::cout << "Rank " << pid << " spans Y = " << y_offset_allranks[pid] << " through "
+                      << y_offset_allranks[pid] + ny_local_allranks[pid] - 1 << std::endl;
+        std::cout << "================================================================" << std::endl;
+    }
 
     // Perform domain decomposition and initialize first layer's grid
     void decomposeDomain(const int id, const int np, std::string simulation_type) {
-
-        if (id == 0) {
-            std::cout << "Domain size: " << nx << " by " << ny << " by " << nz << std::endl;
-            std::cout << "X Limits of domain: " << x_min << " and " << x_max << std::endl;
-            std::cout << "Y Limits of domain: " << y_min << " and " << y_max << std::endl;
-            std::cout << "Z Limits of domain: " << z_min << " and " << z_max << std::endl;
-            std::cout << "================================================================" << std::endl;
-        }
 
         // Decompose the domain into subdomains on each MPI rank: Calculate ny_local and y_offset for each rank, where
         // each subdomain contains "ny_local" in Y, offset from the full domain origin by "y_offset" cells in Y
@@ -226,19 +248,14 @@ struct Grid {
         ny_local = getNyLocal(id, np);
 
         // Add halo regions with a width of 1 in +/- Y if this MPI rank is not as a domain boundary in said direction
-        addHalo();
+        addHalo(np);
         // Domain size across all ranks and all layers
         domain_size_all_layers = getDomainSizeAllLayers();
-        // Gather ny_local and y_offset information on rank 0 to print to screen in rank order
-        std::vector<int> global_offset(np);
-        std::vector<int> global_size(np);
-        MPI_Gather(&y_offset, 1, MPI_INT, global_offset.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
-        MPI_Gather(&ny_local, 1, MPI_INT, global_size.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
-        if (id == 0) {
-            for (int pid = 0; pid < np; pid++)
-                std::cout << "Rank " << pid << " spans Y = " << global_offset[pid] << " through "
-                          << global_offset[pid] + global_size[pid] - 1 << std::endl;
-        }
+        // Rank 0 stores each MPI rank's subdomain bounds in Y
+        ny_local_allranks.resize(np);
+        y_offset_allranks.resize(np);
+        MPI_Gather(&ny_local, 1, MPI_INT, ny_local_allranks.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Gather(&y_offset, 1, MPI_INT, y_offset_allranks.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
 
         // Bounds of layer 0: Z coordinates span z_layer_bottom-z_layer_top, inclusive (functions previously in
         // CAinitialize.cpp and CAcelldata.hpp)
@@ -442,8 +459,12 @@ struct Grid {
         int neighbor_rank_north_local;
         if (np > 1) {
             neighbor_rank_north_local = id + 1;
-            if (id == np - 1)
-                neighbor_rank_north_local = MPI_PROC_NULL;
+            if (id == np - 1) {
+                if (is_periodic)
+                    neighbor_rank_north_local = 0;
+                else
+                    neighbor_rank_north_local = MPI_PROC_NULL;
+            }
         }
         else {
             // No MPI communication
@@ -457,8 +478,12 @@ struct Grid {
         int neighbor_rank_south_local;
         if (np > 1) {
             neighbor_rank_south_local = id - 1;
-            if (id == 0)
-                neighbor_rank_south_local = MPI_PROC_NULL;
+            if (id == 0) {
+                if (is_periodic)
+                    neighbor_rank_south_local = np - 1;
+                else
+                    neighbor_rank_south_local = MPI_PROC_NULL;
+            }
         }
         else {
             // No MPI communication
@@ -529,7 +554,7 @@ struct Grid {
 
     // Add ghost nodes to the appropriate subdomains (added where the subdomains overlap, but not at edges of physical
     // domain)
-    void addHalo() {
+    void addHalo(const int np) {
 
         // Add halo regions in Y direction if this subdomain borders subdomains on other processors
         // If only 1 rank in the y direction, no halo regions - subdomain is coincident with overall simulation domain
@@ -540,6 +565,12 @@ struct Grid {
         if (neighbor_rank_south != MPI_PROC_NULL) {
             ny_local++;
             // Also adjust subdomain offset, as these ghost nodes were added on the -y side of the subdomain
+            y_offset--;
+        }
+        // If periodic boundaries and only 1 MPI rank, special case where despite having no MPI neighbors, the domain is
+        // extended in Y
+        if ((is_periodic) && (np == 1)) {
+            ny_local += 2;
             y_offset--;
         }
     }
@@ -672,17 +703,35 @@ struct Grid {
     // Get the y cell position of the cell from the 1D cell coordinate with respect to the overall simulation domain
     // (all MPI ranks)
     KOKKOS_INLINE_FUNCTION
-    int getCoordYGlobal(const int index) const {
-        int rem = index % (nx * ny);
-        int coord_y = rem % ny;
+    int getCoordYGlobal(const int index, const bool is_periodic = false) const {
+        int nx_adj, ny_adj;
+        if (is_periodic) {
+            nx_adj = nx - 2;
+            ny_adj = ny - 2;
+        }
+        else {
+            nx_adj = nx;
+            ny_adj = ny;
+        }
+        int rem = index % (nx_adj * ny_adj);
+        int coord_y = rem % ny_adj + is_periodic;
         return coord_y;
     }
     // Get the x cell position of the cell from the 1D cell coordinate with respect to the overall simulation domain
     // (all MPI ranks)
     KOKKOS_INLINE_FUNCTION
-    int getCoordXGlobal(const int index) const {
-        int rem = index % (nx * ny);
-        int coord_x = rem / ny;
+    int getCoordXGlobal(const int index, const bool is_periodic = false) const {
+        int nx_adj, ny_adj;
+        if (is_periodic) {
+            nx_adj = nx - 2;
+            ny_adj = ny - 2;
+        }
+        else {
+            nx_adj = nx;
+            ny_adj = ny;
+        }
+        int rem = index % (nx_adj * ny_adj);
+        int coord_x = rem / ny_adj + is_periodic;
         return coord_x;
     }
 };

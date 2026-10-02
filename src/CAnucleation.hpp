@@ -170,7 +170,10 @@ struct Nucleation {
     // Initialize nucleation site locations, GrainID values, and time at which nucleation events will potentially occur,
     // accounting for multiple possible nucleation events in cells that melt and solidify multiple times
     template <class... Params>
-    void placeNuclei(std::string simulation_type, const Temperature<memory_space> &temperature, const InterfacialResponseFunction &irf, const unsigned long rng_seed, const int layernumber, const Grid &grid, const int id, const double deltat) {
+    void placeNuclei(std::string simulation_type, const Temperature<memory_space> &temperature,
+                     const InterfacialResponseFunction &irf, const unsigned long rng_seed, const int layernumber,
+                     const Grid &grid, const int id, const double deltat, const int n_grain_orientations = 0,
+                     const bool shuffle_grain_orientations = false) {
 
         // TODO: convert this subroutine into kokkos kernels, rather than copying data back to the host, and nucleation
         // data back to the device again. This is currently performed on the device due to heavy usage of standard
@@ -219,6 +222,14 @@ struct Nucleation {
         view_type_int_host nuclei_y(Kokkos::ViewAllocateWithoutInitializing("NucleiY"), nuclei_this_layer);
         view_type_int_host nuclei_z(Kokkos::ViewAllocateWithoutInitializing("NucleiZ"), nuclei_this_layer);
 
+        // RNG for shuffling nuclei orientations (directional solidification only)
+        std::mt19937_64 ori_gen(rng_seed + 1); // + 1 so distinct from substrate grains
+        // shuffled_orientations_list contains orientations 0 through n_grain_orientations-1
+        std::vector<int> shuffled_orientations_list(n_grain_orientations);
+        for (int i = 0; i < n_grain_orientations; i++)
+            shuffled_orientations_list[i] = i;
+        std::shuffle(shuffled_orientations_list.begin(), shuffled_orientations_list.end(), ori_gen);
+
         for (int meltevent = 0; meltevent < nuclei_multiplier; meltevent++) {
             for (int n = 0; n < nuclei_this_layer_single; n++) {
                 int n_event = meltevent * nuclei_this_layer_single + n;
@@ -231,8 +242,16 @@ struct Nucleation {
                 nuclei_y(n_event) = Kokkos::round((nuclei_y_unrounded - grid.y_min) / grid.deltax);
                 nuclei_z(n_event) = Kokkos::round((nuclei_z_unrounded - grid.z_min_layer[layernumber]) / grid.deltax);
                 // Assign each nuclei a Grain ID (negative values used for nucleated grains) and an undercooling
-                nuclei_grain_id_whole_domain_v[n_event] =
-                    -(nuclei_whole_domain + n_event + 1); // avoid using grain ID 0
+                if (shuffle_grain_orientations) {
+                    int n_repeat = n / n_grain_orientations;
+                    int n_unique = n % n_grain_orientations;
+                    nuclei_grain_id_whole_domain_v[n_event] =
+                        -((n_repeat + 1) * shuffled_orientations_list[n_unique] + 1);
+                }
+                else {
+                    // Assign sequentially, avoid using grain ID 0
+                    nuclei_grain_id_whole_domain_v[n_event] = -(nuclei_whole_domain + n_event + 1);
+                }
                 nuclei_undercooling_whole_domain_v[n_event] = nucleation_undercooling_dist(generator);
             }
         }

@@ -83,11 +83,19 @@ struct RepresentativeRegion {
     std::vector<int> unique_grain_id_vector;
     // Size (in units of length, area, or volume, depending on region_type) associated with each grain
     std::vector<float> grain_size_vector_microns;
+    // Periodic domain in X and Y
+    bool is_periodic;
+    // Global domain bounds
+    int nx, ny;
 
     // Constructor
     template <typename ViewTypeInt3dHost, typename ViewTypeShort3dHost>
-    RepresentativeRegion(nlohmann::json analysis_data, std::string region_name, int nx, int ny, int nz, double deltax,
-                         std::vector<double> xyz_bounds, ViewTypeInt3dHost grain_id, ViewTypeShort3dHost phase_id) {
+    RepresentativeRegion(nlohmann::json analysis_data, std::string region_name, int _nx, int _ny, int nz, double deltax,
+                         std::vector<double> xyz_bounds, ViewTypeInt3dHost grain_id, ViewTypeShort3dHost phase_id,
+                         bool _is_periodic) {
+
+        nx = _nx;
+        ny = _ny;
 
         // Data for the specific region of interest
         std::cout << "Parsing data for region " << region_name << std::endl;
@@ -100,6 +108,7 @@ struct RepresentativeRegion {
         setRegionTypeOrientation();
         setRegionSize(deltax);
         setUnitDimension();
+        is_periodic = _is_periodic;
 
         // Check which overall stats and per grain stats should be printed for this region
         readAnalysisOptionsFromList(region_data, "printAvgStats", analysis_options_stats_key,
@@ -415,6 +424,77 @@ struct RepresentativeRegion {
             }
             int min_coord = *std::min_element(grain_coordinate.begin(), grain_coordinate.end());
             int max_coord = *std::max_element(grain_coordinate.begin(), grain_coordinate.end());
+            // Periodic boundary in x and y: check and see if the representative region wraps around domain edge(s)
+            if (is_periodic) {
+                bool region_periodic_x =
+                    ((direction == "X") && (x_bounds_cells[0] == 0) && (x_bounds_cells[1] == nx - 1));
+                bool region_periodic_y =
+                    ((direction == "Y") && (y_bounds_cells[0] == 0) && (y_bounds_cells[1] == ny - 1));
+                if ((region_periodic_x) || (region_periodic_y)) {
+                    int min_dir, max_dir;
+                    if (direction == "X") {
+                        min_dir = x_bounds_cells[0];
+                        max_dir = x_bounds_cells[1];
+                    }
+                    else {
+                        min_dir = y_bounds_cells[0];
+                        max_dir = y_bounds_cells[1];
+                    }
+                    // Move "inward" from max and min to find the true edges of the grain
+                    if ((min_coord == 0) && (max_coord == max_dir)) {
+                        bool adjusting_min = true;
+                        while (adjusting_min) {
+                            // Check if this grain is represented at X or Y = min_coord
+                            if (std::find(grain_coordinate.begin(), grain_coordinate.end(), min_coord) ==
+                                grain_coordinate.end()) {
+                                // Grain is not represented - decrement min_coord and leave loop
+                                min_coord--;
+                                adjusting_min = false;
+                            }
+                            else {
+                                // Grain is represented at this X or Y = min_coord, increment to check the next
+                                // min_coord
+                                min_coord++;
+                            }
+                            if (min_coord == max_dir) {
+                                // Grains wraps across entire domain
+                                adjusting_min = false;
+                            }
+                        }
+                        bool adjusting_max = true;
+                        while (adjusting_max) {
+                            // Check if this grain is represented at X or Y = min_coord
+                            if (std::find(grain_coordinate.begin(), grain_coordinate.end(), max_coord) ==
+                                grain_coordinate.end()) {
+                                // Grain is not represented - increment max_coord and leave loop
+                                max_coord++;
+                                adjusting_max = false;
+                            }
+                            else {
+                                // Grain is represented at this X or Y = max_coord, decrement to check the next
+                                // max_coord
+                                max_coord--;
+                            }
+                            if (max_coord == min_dir) {
+                                // Grains wraps across entire domain
+                                adjusting_max = false;
+                            }
+                        }
+                        if ((max_coord == min_dir) && (min_coord == max_dir)) {
+                            // Grains wraps around entire region
+                            max_coord = max_dir;
+                            min_coord = min_dir;
+                        }
+                        else {
+                            // Max and min coordinates are now swapped - add domain size to min coordinate, which
+                            // becomes the new max, and the old max coordinate becomes the new min
+                            int min_temp = max_coord;
+                            max_coord = min_coord + (max_dir - min_dir + 1);
+                            min_coord = min_temp;
+                        }
+                    }
+                }
+            }
             grain_extent[n] = (max_coord - min_coord + 1) * convertToMicrons(deltax, "length");
         }
     }

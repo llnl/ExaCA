@@ -58,12 +58,12 @@ void testSmallDirS() {
 
     // Initialize cell types, grain IDs, and layer IDs
     CellData<memory_space> celldata(grid, inputs.substrate, inputs.print.store_melt_pool_edge);
-    celldata.initSubstrate_Directional(id, grid, inputs.rng_seed);
+    celldata.initSubstrate_Directional(id, np, grid, inputs.rng_seed);
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Variables characterizing the active cell region within each rank's grid, including buffers for ghost node data
     // (fixed size) and the steering vector/steering vector size on host/device
-    Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size);
+    Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size, grid.nx, grid.ny);
     // Initialize octahedron for active cells
     createOctahedra_NoRemelt(grid, celldata, temperature, orientation, interface);
     MPI_Barrier(MPI_COMM_WORLD);
@@ -141,7 +141,7 @@ void testSmallEquiaxedGrain() {
 
     // Variables characterizing the active cell region within each rank's grid, including buffers for ghost node data
     // (fixed size) and the steering vector/steering vector size on host/device
-    Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size);
+    Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size, grid.nx, grid.ny);
     // Initialize octahedron for active cell
     createOctahedra_NoRemelt(grid, celldata, temperature, orientation, interface);
     MPI_Barrier(MPI_COMM_WORLD);

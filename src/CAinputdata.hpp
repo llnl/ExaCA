@@ -38,6 +38,8 @@ struct DomainInputs {
     int number_of_layers = 1, layer_height = 0;
     // problem type Spot only
     int spot_radius = 0;
+    // problem type Directional only
+    bool is_periodic = false;
 };
 
 struct NucleationInputs {
@@ -92,6 +94,7 @@ struct TemperatureInputs {
 struct SubstrateInputs {
     // problem type Directional only
     std::string surface_init_mode = "";
+    bool shuffle_grain_orientations = false;
     // Only used for mode (i)
     double fract_surface_sites_active = 0.0;
     // Only used for mode (ii)

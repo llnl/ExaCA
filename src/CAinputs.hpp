@@ -112,6 +112,9 @@ struct Inputs {
             domain.nx = input_data["Domain"]["Nx"];
             domain.ny = input_data["Domain"]["Ny"];
             domain.nz = input_data["Domain"]["Nz"];
+            if (simulation_type == "Directional")
+                if (input_data["Domain"].contains("PeriodicXY"))
+                    domain.is_periodic = input_data["Domain"]["PeriodicXY"];
         }
         else if ((simulation_type == "FromFile") || (simulation_type == "FromFinch")) {
             domain.number_of_layers = input_data["Domain"]["NumberOfLayers"];
@@ -338,6 +341,8 @@ struct Inputs {
                                          "required to initialize this problem type");
             if (input_data["Substrate"].contains("FillBottomSurface"))
                 substrate.fill_bottom_surface = input_data["Substrate"]["FillBottomSurface"];
+            if (input_data["Substrate"].contains("ShuffleGrainOrientations"))
+                substrate.shuffle_grain_orientations = input_data["Substrate"]["ShuffleGrainOrientations"];
         }
         else if (simulation_type == "SingleGrain") {
             // Orientation of the single grain at the domain center
@@ -754,11 +759,6 @@ struct Inputs {
     void printExaCALog(const int id, const int np, const int cycle, const Grid grid, Timers timers,
                        const float vol_fraction_nucleated) {
 
-        std::vector<int> ny_local_allranks(np);
-        std::vector<int> y_offset_allranks(np);
-        MPI_Gather(&grid.ny_local, 1, MPI_INT, ny_local_allranks.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
-        MPI_Gather(&grid.y_offset, 1, MPI_INT, y_offset_allranks.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
-
         if (id == 0) {
             std::string FName = print.path_to_output + print.base_filename + ".json";
             std::cout << "Printing ExaCA log file" << std::endl;
@@ -786,9 +786,20 @@ struct Inputs {
                     exaca_log << "   \"GrainOrientationFile\": \"" << grain_orientation_file[0] << "\"," << std::endl;
             }
             exaca_log << "   \"Domain\": {" << std::endl;
-            exaca_log << "      \"Nx\": " << grid.nx << "," << std::endl;
-            exaca_log << "      \"Ny\": " << grid.ny << "," << std::endl;
+            // Periodic boundaries not written to file(s)
+            if (domain.is_periodic) {
+                exaca_log << "      \"Nx\": " << grid.nx - 2 << "," << std::endl;
+                exaca_log << "      \"Ny\": " << grid.ny - 2 << "," << std::endl;
+            }
+            else {
+                exaca_log << "      \"Nx\": " << grid.nx << "," << std::endl;
+                exaca_log << "      \"Ny\": " << grid.ny << "," << std::endl;
+            }
             exaca_log << "      \"Nz\": " << grid.nz << "," << std::endl;
+            if (domain.is_periodic)
+                exaca_log << "      \"PeriodicXY\": true," << std::endl;
+            else
+                exaca_log << "      \"PeriodicXY\": false," << std::endl;
             exaca_log << "      \"CellSize\": " << grid.deltax << "," << std::endl;
             exaca_log << "      \"TimeStep\": " << domain.deltat << "," << std::endl;
             exaca_log << "      \"XBounds\": [" << grid.x_min << "," << grid.x_max << "]," << std::endl;
@@ -845,12 +856,12 @@ struct Inputs {
             exaca_log << "   \"Decomposition\": {" << std::endl;
             exaca_log << "       \"SubdomainYSize\": [";
             for (int i = 0; i < np - 1; i++)
-                exaca_log << ny_local_allranks[i] << ",";
-            exaca_log << ny_local_allranks[np - 1] << "]," << std::endl;
+                exaca_log << grid.ny_local_allranks[i] << ",";
+            exaca_log << grid.ny_local_allranks[np - 1] << "]," << std::endl;
             exaca_log << "       \"SubdomainYOffset\": [";
             for (int i = 0; i < np - 1; i++)
-                exaca_log << y_offset_allranks[i] << ",";
-            exaca_log << y_offset_allranks[np - 1] << "]" << std::endl;
+                exaca_log << grid.y_offset_allranks[i] << ",";
+            exaca_log << grid.y_offset_allranks[np - 1] << "]" << std::endl;
             exaca_log << "   }," << std::endl;
             exaca_log << timers.printLog() << std::endl;
             exaca_log << "}" << std::endl;

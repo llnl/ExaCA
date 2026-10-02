@@ -56,13 +56,16 @@ void runExaCALayer(int id, int np, int layernumber, int &cycle, Inputs inputs, T
         // recorded
         timers.startCapture();
         cellCapture(cycle, mpi_parallel, grid, irf, celldata, temperature, interface, orientation);
+        // Update periodic boundaries if necessary
+        if (grid.is_periodic)
+            updatePeriodicBoundaries(mpi_parallel, grid, celldata, interface, orientation);
         checkBuffers(id, cycle, grid, celldata, interface, orientation.n_grain_orientations);
         timers.stopCapture();
 
         if (np > 1) {
             // Update ghost nodes
             timers.startComm();
-            haloUpdate(cycle, id, grid, celldata, interface, orientation);
+            haloUpdate(cycle, id, np, grid, celldata, interface, orientation);
             timers.stopComm();
         }
 

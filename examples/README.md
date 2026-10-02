@@ -42,6 +42,7 @@ The .json files in the examples subdirectory are provided on the command line to
 |Nx            | Directional, SingleGrain    | Domain size in x, in cells
 |Ny            | Directional, SingleGrain    | Domain size in y, in cells
 |Nz            | Directional, SingleGrain    | Domain size in z, in cells
+|PeriodicXY    | Directional            | Periodic boundary conditions for the X and Y directions
 |NumberOfLayers| FromFile, FromFinch    | Number of layers for which the temperature pattern will be repeated
 |LayerOffset   | FromFile, FromFinch    | If NumberOfLayers > 1, the offset (in cells) in the +Z direction for each layer of the temperature pattern
 |SpotRadius    | Spot                   | Spot radius, in microns
@@ -79,6 +80,7 @@ The .json files in the examples subdirectory are provided on the command line to
 |GrainLocationsY     | Directional      | List of grain locations in Y on the bottom surface of the domain (see note (b-iii))
 |GrainIDs            | Directional      | GrainID values for each grain in (X,Y) (see note (b3))
 |FillBottomSurface   | Directional      | Optionally assign all cells on the bottom surface the grain ID of the closest grain (defaults to false)
+|ShuffleGrainOrientations | Directional | Select grain orientations randomly from list if true, otherwise assign grain orientations in order from file
 |MeanBaseplateGrainSize | Spot, FromFile, FromFinch       | Mean spacing between grain centers in the baseplate/substrate (in microns) (see note (a))
 |SubstrateFilename   |  Spot, FromFile, FromFinch  | Path to and filename for substrate data in vtk format (see note (a))
 |MeanPowderGrainSize | Spot, FromFile, FromFinch    | Mean spacing between grain centers in the powder layer (in microns). Defaults to one grain per cell

@@ -23,7 +23,8 @@
 // These are used in reading/parsing ExaCA microstructure data
 void parseLogFile(std::string logfile, int &nx, int &ny, int &nz, double &deltax, int &number_of_layers,
                   std::vector<double> &xyz_bounds, std::vector<std::string> &grain_unit_vector_file,
-                  std::vector<std::string> &phase_names, int &num_phases, bool orientation_files_in_input);
+                  std::vector<std::string> &phase_names, int &num_phases, bool orientation_files_in_input,
+                  bool &is_periodic);
 double convertToMicrons(double deltax, std::string region_type);
 double convertToCells(double deltax, std::string region_type);
 void dualPrint(std::string temp, std::ostream &stream1, std::ostream &stream2);

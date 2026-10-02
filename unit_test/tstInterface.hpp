@@ -104,7 +104,7 @@ void testHaloUpdate() {
     // Interface struct
     // Initial size large enough to hold all data
     int buf_size_initial_estimate = grid.nx * grid.nz_layer;
-    Interface<memory_space> interface(id, grid.domain_size, 0.01, buf_size_initial_estimate);
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny, false, buf_size_initial_estimate);
     // Copy to host for initialization
     auto diagonal_length_host = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), interface.diagonal_length);
     auto octahedron_center_host = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), interface.octahedron_center);
@@ -190,7 +190,7 @@ void testHaloUpdate() {
                     printf("Warning: failed to load cell %d data into buffer\n", index);
             }
         });
-    haloUpdate(0, 0, grid, celldata, interface, orientation);
+    haloUpdate(0, id, np, grid, celldata, interface, orientation);
 
     // Copy views to host to check values
     grain_id = celldata.getGrainIDSubview(grid);
@@ -239,6 +239,130 @@ void testHaloUpdate() {
         EXPECT_FLOAT_EQ(octahedron_center_host(3 * halo_locations_alt_active_region[n]), 2.5);
         EXPECT_FLOAT_EQ(octahedron_center_host(3 * halo_locations_alt_active_region[n] + 1), oct_centers_y_alt[n]);
         EXPECT_FLOAT_EQ(octahedron_center_host(3 * halo_locations_alt_active_region[n] + 2), 2.5);
+    }
+}
+
+void testHaloPeriodicBoundaryUpdate() {
+
+    using memory_space = TEST_MEMSPACE;
+    using view_int = Kokkos::View<int *, TEST_MEMSPACE>;
+    using view_int_host = typename view_int::host_mirror_type;
+    using view_float_2d = Kokkos::View<float **, TEST_MEMSPACE>;
+
+    int id, np;
+    // Get number of processes
+    MPI_Comm_size(MPI_COMM_WORLD, &np);
+    // Get individual process ID
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+    bool mpi_parallel = false;
+    if (np > 1)
+        mpi_parallel = true;
+
+    // Initialize empty inputs struct - set manually for test
+    Inputs inputs;
+    inputs.domain.deltax = 1.0 * pow(10, -6);
+    inputs.domain.is_periodic = true;
+    inputs.domain.nx = 5;
+    inputs.domain.ny = 25;
+    inputs.domain.nz = 3;
+    // Decompose grid
+    Grid grid("Directional", id, np, 1, inputs.domain, inputs.substrate, inputs.temperature);
+
+    // Initialize grain orientations
+    std::string grain_orientation_file_s = checkFileInstalled("GrainOrientationVectors.csv", id);
+    std::vector<std::string> grain_orientation_file = {grain_orientation_file_s};
+    Orientation<memory_space> orientation(id, grain_orientation_file, false);
+
+    // Initialize host views - set initial GrainID values to 0, all CellType values to liquid
+    CellData<memory_space> celldata(grid, inputs.substrate);
+    // Interface struct
+    int buf_size_initial_estimate = grid.nx * grid.nz_layer;
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny, true, buf_size_initial_estimate);
+
+    // Load test grain ID and octahedron data
+    auto grain_id = celldata.getGrainIDSubview(grid);
+    auto phase_id = celldata.getPhaseIDSubview(grid);
+    Kokkos::deep_copy(celldata.cell_type, Liquid);
+    Kokkos::deep_copy(phase_id, 0);
+    view_int_host test_loc_x_host(Kokkos::ViewAllocateWithoutInitializing("x_host"), 4);
+    view_int_host test_loc_y_host(Kokkos::ViewAllocateWithoutInitializing("y_host"), 4);
+    view_int_host test_updated_loc_x_host(Kokkos::ViewAllocateWithoutInitializing("x_upd_host"), 4);
+    view_int_host test_updated_loc_y_host(Kokkos::ViewAllocateWithoutInitializing("y_upd_host"), 4);
+    view_int_host test_loc_z_host(Kokkos::ViewAllocateWithoutInitializing("z_host"), 4);
+    view_float_2d test_crit_diag_length_vals(Kokkos::ViewAllocateWithoutInitializing("cdl_test"), 4, 26);
+
+    // Grain A: X=1,Y=3,Z=1 on each rank: should get copied to cell at X=6 (+X boundary)
+    test_loc_x_host(0) = 1;
+    test_loc_y_host(0) = 3;
+    test_loc_z_host(0) = 1;
+    test_updated_loc_x_host(0) = 6;
+    test_updated_loc_y_host(0) = 3;
+    // Grain B: X=5,Y=3,Z=2 on each rank: should get copied to cell at X=0 (-X boundary)
+    test_loc_x_host(1) = 5;
+    test_loc_y_host(1) = 3;
+    test_loc_z_host(1) = 2;
+    test_updated_loc_x_host(1) = 0;
+    test_updated_loc_y_host(1) = 3;
+    // Grain C: X=3,Y=1,Z=0 on rank 0: should get copied to cell at Y=ny_local-1 on rank np-1 (-Y boundary)
+    test_loc_x_host(2) = 3;
+    test_loc_y_host(2) = 1;
+    test_loc_z_host(2) = 0;
+    test_updated_loc_x_host(2) = 3;
+    test_updated_loc_y_host(2) = grid.ny_local - 1;
+    // Grain D: X=5,Y=ny_local-2,Z=0 on rank np-1: should get copied to cell at X=0,Y=0 on rank 0 (-X/+Y boundary)
+    test_loc_x_host(3) = 5;
+    test_loc_y_host(3) = grid.ny_local - 2;
+    test_loc_z_host(3) = 0;
+    test_updated_loc_x_host(3) = 0;
+    test_updated_loc_y_host(3) = 0;
+
+    auto test_loc_x = Kokkos::create_mirror_view_and_copy(TEST_MEMSPACE(), test_loc_x_host);
+    auto test_loc_y = Kokkos::create_mirror_view_and_copy(TEST_MEMSPACE(), test_loc_y_host);
+    auto test_loc_z = Kokkos::create_mirror_view_and_copy(TEST_MEMSPACE(), test_loc_z_host);
+    Kokkos::parallel_for(
+        "testloadPeriodicGrainID", 4, KOKKOS_LAMBDA(const int &i) {
+            const int index = grid.get1DIndex(test_loc_x[i], test_loc_y[i], test_loc_z[i]);
+            int cell_location[3] = {test_loc_x[i], test_loc_y[i], test_loc_z[i]};
+            const float cx = test_loc_x[i] + 0.5;
+            const float cy = test_loc_y[i] + grid.y_offset + 0.5;
+            const float cz = test_loc_z[i] + 0.5;
+            float octahedron_data[4] = {cx, cy, cz, 0.01};
+            grain_id(index) = i + 1;
+            const int my_orientation = getGrainOrientation(grain_id(index), orientation.n_grain_orientations);
+            interface.createNewOctahedron(index, cell_location, grid.y_offset);
+            interface.calcCritDiagonalLength(index, cx, cy, cz, cx, cy, cz, my_orientation,
+                                             orientation.grain_unit_vector, phase_id(index));
+            celldata.cell_type(index) = interface.loadGhostNodesSuccess(
+                mpi_parallel, Active, ActiveFailedBufferLoad, grain_id(index), octahedron_data, phase_id(index),
+                grid.ny_local, cell_location[0], cell_location[1], cell_location[2], grid.at_north_boundary,
+                grid.at_south_boundary, orientation.n_grain_orientations);
+            for (int l = 0; l < 26; l++)
+                test_crit_diag_length_vals(i, l) = interface.crit_diagonal_length(26 * index + l);
+        });
+
+    // Update periodic boundary
+    updatePeriodicBoundaries(mpi_parallel, grid, celldata, interface, orientation);
+
+    // Perform halo exchange
+    haloUpdate(0, id, np, grid, celldata, interface, orientation);
+
+    // Copy views to host to check grain ID and critical diagonal length values in cells copied across boundaries
+    auto crit_diagonal_length_host =
+        Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), interface.crit_diagonal_length);
+    grain_id = celldata.getGrainIDSubview(grid);
+    auto grain_id_host = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), grain_id);
+    auto test_crit_diag_length_vals_host =
+        Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), test_crit_diag_length_vals);
+
+    for (int i = 0; i < 3; i++) {
+        bool check_grain = ((i < 2) || ((id == np - 1) && (i == 2)) || ((id == 0) & (i == 3)));
+        if (check_grain) {
+            int cell_location[3] = {test_updated_loc_x_host(i), test_updated_loc_y_host(i), test_loc_z_host(i)};
+            const int index = grid.get1DIndex(cell_location[0], cell_location[1], cell_location[2]);
+            EXPECT_EQ(grain_id_host(index), i + 1);
+            for (int l = 0; l < 26; l++)
+                EXPECT_FLOAT_EQ(test_crit_diag_length_vals_host(i, l), crit_diagonal_length_host(26 * index + l));
+        }
     }
 }
 
@@ -298,7 +422,7 @@ void testResizeRefillBuffers() {
 
     // Interface struct - set buffer size to 1
     int buf_size_initial_estimate = 1;
-    Interface<memory_space> interface(id, grid.domain_size, 0.01, buf_size_initial_estimate);
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny, false, buf_size_initial_estimate);
 
     // Start with 2 cells in the current layer active (one in each buffer), GrainID equal to the X coordinate, Diagonal
     // length equal to the Y coordinate, octahedron center at (x + 0.5, y + 0.5, z + 0.5)
@@ -459,7 +583,7 @@ void testResizeBuffers() {
     grid.domain_size = domain_size;
     int buf_size_initial_estimate = 50;
     // Init buffers to large size
-    Interface<memory_space> interface(id, grid.domain_size, 0.01, 50);
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny, false, 50);
 
     // Fill buffers with test data
     Kokkos::parallel_for(
@@ -574,7 +698,7 @@ void testRemeltActivateCells() {
     temperature.initOrderedTimeTempHistory(liquidus_time_step_read, cell_read, cooling_rate_read, liq_event_count);
 
     // Interface struct
-    Interface<memory_space> interface(id, grid.domain_size, 0.01);
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny);
 
     int numcycles = 15;
     for (int cycle = 1; cycle <= numcycles; cycle++) {
@@ -678,7 +802,7 @@ void testCalcCritDiagonalLength() {
     grid.domain_size = domain_size;
     int id;
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
-    Interface<memory_space> interface(id, grid.domain_size, 0.01);
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny);
 
     // Load octahedron centers into test view
     view_type octahedron_center_test(Kokkos::ViewAllocateWithoutInitializing("DOCenter"), 3 * domain_size);
@@ -733,7 +857,7 @@ void testCreateNewOctahedron() {
     // Create interface struct
     int id;
     MPI_Comm_rank(MPI_COMM_WORLD, &id);
-    Interface<memory_space> interface(id, grid.domain_size, 0.01);
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny);
 
     // Octahedra now use the layer coordinates, not the coordinates of the multilayer domain
     for (int coord_z = 0; coord_z < grid.nz_layer; coord_z++) {
@@ -766,6 +890,7 @@ void testCreateNewOctahedron() {
 //---------------------------------------------------------------------------//
 TEST(TEST_CATEGORY, communication) {
     testHaloUpdate();
+    testHaloPeriodicBoundaryUpdate();
     testResizeRefillBuffers();
     testResizeBuffers();
 }

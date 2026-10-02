@@ -32,6 +32,8 @@ struct Interface {
     using view_type_int = Kokkos::View<int *, memory_space>;
     using view_type_int_host = typename view_type_int::host_mirror_type;
     using neighbor_list_type = Kokkos::Array<int, 26>;
+    using periodic_bc_type = Kokkos::Array<int, 2>;
+    using periodic_bc_corner_type = Kokkos::Array<int, 4>;
 
     // Using the default exec space for this memory space.
     using execution_space = typename memory_space::execution_space;
@@ -48,12 +50,18 @@ struct Interface {
     // Neighbor lists
     neighbor_list_type neighbor_x, neighbor_y, neighbor_z;
 
+    // Periodic buffer data
+    bool is_periodic;
+    periodic_bc_type coord_x_interior, coord_x_exterior, coord_y_interior, coord_y_exterior, octahedron_center_offset_x,
+        octahedron_center_offset_y;
+    periodic_bc_corner_type corner_x_interior, corner_x_exterior, corner_y_interior, corner_y_exterior;
     // Parallel dispatch tags.
     struct RefillBuffersTag {};
 
     // Constructor for views and view bounds for current layer
     // Use default initialization to 0 for num_steer_host and num_steer and buffer counts
-    Interface(const int id, const int domain_size, const float init_oct_size, const int buf_size_initial_estimate = 25,
+    Interface(const int id, const int domain_size, const float init_oct_size, const int nx, const int ny,
+              const bool _is_periodic = false, const int buf_size_initial_estimate = 25,
               const int buf_components_temp = 9)
         : diagonal_length(view_type_float(Kokkos::ViewAllocateWithoutInitializing("diagonal_length"), domain_size))
         , octahedron_center(
@@ -86,7 +94,46 @@ struct Interface {
         resetBuffers();
         // Initialize neighbor lists for iterating over active cells
         neighborListInit();
-
+        // If boundary conditions are periodic, initialize offset and coordinate swap views
+        is_periodic = _is_periodic;
+        if (is_periodic) {
+            // X locations of cell data to be copied from
+            coord_x_interior[0] = 1;
+            coord_x_interior[1] = nx - 2;
+            // X locations of cell data to be copied to
+            coord_x_exterior[0] = nx - 1;
+            coord_x_exterior[1] = 0;
+            // Y locations of cell data to be copied from
+            coord_y_interior[0] = 1;
+            coord_y_interior[1] = ny - 2;
+            // Y locations of cell data to be copied to
+            coord_y_exterior[0] = ny - 1;
+            coord_y_exterior[1] = 0;
+            // XY corners to be copied form
+            corner_x_interior[0] = coord_x_interior[0];
+            corner_x_interior[1] = coord_x_interior[0];
+            corner_x_interior[2] = coord_x_interior[1];
+            corner_x_interior[3] = coord_x_interior[1];
+            corner_y_interior[0] = coord_y_interior[0];
+            corner_y_interior[1] = coord_y_interior[1];
+            corner_y_interior[2] = coord_y_interior[0];
+            corner_y_interior[3] = coord_y_interior[1];
+            // XY corners to be copied to
+            corner_x_exterior[0] = coord_x_exterior[0];
+            corner_x_exterior[1] = coord_x_exterior[0];
+            corner_x_exterior[2] = coord_x_exterior[1];
+            corner_x_exterior[3] = coord_x_exterior[1];
+            corner_y_exterior[0] = coord_y_exterior[0];
+            corner_y_exterior[1] = coord_y_exterior[1];
+            corner_y_exterior[2] = coord_y_exterior[0];
+            corner_y_exterior[3] = coord_y_exterior[1];
+            // Offsets for X locations of octahedra centers
+            octahedron_center_offset_x[0] = nx - 2;
+            octahedron_center_offset_x[1] = -(nx - 2);
+            // Offsets for Y locations of octahedra centers
+            octahedron_center_offset_y[0] = ny - 2;
+            octahedron_center_offset_y[1] = -(ny - 2);
+        }
         if (id == 0)
             std::cout << "Done with interface initialization" << std::endl;
     }
@@ -460,6 +507,25 @@ struct Interface {
             }
         }
         return load_success_type;
+    }
+
+    // If periodic boundary conditions are used and the recieve buffer is being unpacked, ensure the Y coordinate of the
+    // unpacked cell accounts for the periodicity if at global domain edges
+    KOKKOS_FUNCTION
+    float getAdjustedOctahedronCenterBufferY(const int id, const int np, const int coord_y, const int ny_local,
+                                             const float original_octahedron_center_y) const {
+        float new_octahedron_center_y;
+        if (!is_periodic)
+            new_octahedron_center_y = original_octahedron_center_y;
+        else {
+            if ((coord_y == 0) && (id == 0))
+                new_octahedron_center_y = original_octahedron_center_y + octahedron_center_offset_y[1];
+            else if ((coord_y == ny_local - 1) && (id == np - 1))
+                new_octahedron_center_y = original_octahedron_center_y + octahedron_center_offset_y[0];
+            else
+                new_octahedron_center_y = original_octahedron_center_y;
+        }
+        return new_octahedron_center_y;
     }
 
     // If data doesn't fit in the buffer after the resize, warn that buffer data may have been lost

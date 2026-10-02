@@ -86,7 +86,8 @@ int main(int argc, char *argv[]) {
             // Initialize cell types, grain IDs, and layer IDs
             CellData<memory_space> celldata(grid, inputs.substrate, inputs.print.store_melt_pool_edge);
             if (simulation_type == "Directional")
-                celldata.initSubstrate_Directional(id, grid, inputs.rng_seed);
+                celldata.initSubstrate_Directional(id, np, grid, inputs.rng_seed, orientation.n_grain_orientations,
+                                                   inputs.domain.is_periodic);
             else if (simulation_type == "SingleGrain")
                 celldata.initSubstrate_SingleGrain(id, grid);
             else
@@ -95,7 +96,8 @@ int main(int argc, char *argv[]) {
 
             // Variables characterizing the active cell region within each rank's grid, including buffers for ghost node
             // data (fixed size) and the steering vector/steering vector size on host/device
-            Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size);
+            Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size, grid.nx, grid.ny,
+                                              inputs.domain.is_periodic);
             // Initialize octahedra for initial active cells, if necessary for this problem type
             if (full_domain_solidification)
                 createOctahedra_NoRemelt(grid, celldata, temperature, orientation, interface);
@@ -113,10 +115,11 @@ int main(int argc, char *argv[]) {
             // events Potential nucleation grains are only associated with liquid cells in layer 0 - they will be
             // initialized for each successive layer when layer 0 is complete
             nucleation.placeNuclei(simulation_type, temperature, irf, inputs.rng_seed, 0, grid, id,
-                                   inputs.domain.deltat);
+                                   inputs.domain.deltat, orientation.n_grain_orientations,
+                                   inputs.substrate.shuffle_grain_orientations);
 
             // Initialize printing struct from inputs
-            Print print(grid, np, inputs.print);
+            Print print(grid, np, inputs.print, inputs.domain.is_periodic);
 
             // End of initialization
             timers.stopInit();

@@ -113,10 +113,15 @@ struct CellData {
 
     // Get the X, Y coordinates and grain ID values for grains at the bottom surface for problem type Directional
     view_type_int_2d_host getSurfaceActiveCellData(int &substrate_act_cells, const Grid &grid,
-                                                   const unsigned long rng_seed) {
+                                                   const unsigned long rng_seed, const int n_grain_orientations,
+                                                   const bool is_periodic) {
 
         // Number of cells at the bottom surface that could potentially be assigned GrainID values
-        const int bottom_surface_size = grid.nx * grid.ny;
+        int bottom_surface_size;
+        if (is_periodic)
+            bottom_surface_size = (grid.nx - 2) * (grid.ny - 2);
+        else
+            bottom_surface_size = grid.nx * grid.ny;
 
         // First get number of substrate grains for each initialization condition
         if (_inputs.surface_init_mode == "SurfaceSiteFraction")
@@ -136,8 +141,26 @@ struct CellData {
             // GrainIDs. Note that the physical locations of these sites (x,y) will vary based on the domain size/cell
             // size Create list of grain IDs and shuffle - leave 0s for cells without substrate grains
             std::vector<int> grain_locations_1d(bottom_surface_size, 0);
-            for (int n = 0; n < substrate_act_cells; n++) {
-                grain_locations_1d[n] = n + 1; // grain ID for epitaxial seeds must be > 0
+            if (_inputs.shuffle_grain_orientations) {
+                // Assign substrate_act_cells grain ID values, randomly selected from list of n_grain_orientations
+                std::vector<int> shuffled_orientations_list(n_grain_orientations);
+                // shuffled_orientations_list contains orientations 0 through n_grain_orientations-1
+                for (int i = 0; i < n_grain_orientations; i++)
+                    shuffled_orientations_list[i] = i;
+                std::mt19937_64 ori_gen(rng_seed);
+                std::shuffle(shuffled_orientations_list.begin(), shuffled_orientations_list.end(), ori_gen);
+                // Assign randomly permuted grain orientations, grain IDs 1 through substrate_act_cells
+                for (int n = 0; n < substrate_act_cells; n++) {
+                    int n_repeat = n / n_grain_orientations;
+                    int n_unique = n % n_grain_orientations;
+                    grain_locations_1d[n] = (n_repeat + 1) * shuffled_orientations_list[n_unique] + 1;
+                }
+            }
+            else {
+                // Assign grain IDs 1 through substrate_act_cells
+                for (int n = 0; n < substrate_act_cells; n++) {
+                    grain_locations_1d[n] = n + 1;
+                }
             }
             std::mt19937_64 gen(rng_seed);
             std::shuffle(grain_locations_1d.begin(), grain_locations_1d.end(), gen);
@@ -146,8 +169,9 @@ struct CellData {
             int act_cell_count = 0;
             for (int n = 0; n < bottom_surface_size; n++) {
                 if (grain_locations_1d[n] != 0) {
-                    act_cell_data_host(act_cell_count, 0) = grid.getCoordXGlobal(n);
-                    act_cell_data_host(act_cell_count, 1) = grid.getCoordYGlobal(n);
+                    // Periodic BCs: only place grains between X,Y = 1 through nx-1,ny-1
+                    act_cell_data_host(act_cell_count, 0) = grid.getCoordXGlobal(n, is_periodic);
+                    act_cell_data_host(act_cell_count, 1) = grid.getCoordYGlobal(n, is_periodic);
                     act_cell_data_host(act_cell_count, 2) = grain_locations_1d[n];
                     act_cell_count++;
                 }
@@ -158,10 +182,10 @@ struct CellData {
             // Since X = 0 and X = nx-1 are the cell centers of the last cells in X, locations are evenly scattered
             // between X = -0.49999 and X = nx - 0.5, as the cells have a half width of 0.5. Note that if the number of
             // grains is large compared to the number of cells, multiple grain IDs may be assigned to one cell and the
-            // total density will be underestimated on the given grid
+            // total density will be underestimated on the given grid. Do not place grains around edges if periodic BCs
             std::mt19937_64 gen(rng_seed);
-            std::uniform_real_distribution<double> x_dist(-0.49999, grid.nx - 0.5);
-            std::uniform_real_distribution<double> y_dist(-0.49999, grid.ny - 0.5);
+            std::uniform_real_distribution<double> x_dist(-0.49999 + is_periodic, grid.nx - 0.5 - is_periodic);
+            std::uniform_real_distribution<double> y_dist(-0.49999 + is_periodic, grid.ny - 0.5 - is_periodic);
             // Randomly locate substrate grain seeds for cells in the interior of this subdomain (at the k = 0 bottom
             // surface)
             for (int n = 0; n < substrate_act_cells; n++) {
@@ -186,13 +210,15 @@ struct CellData {
 
     // Initializes cell types and epitaxial Grain ID values where substrate grains are future active cells on the bottom
     // surface of the constrained domain
-    void initSubstrate_Directional(const int id, const Grid &grid, const unsigned long rng_seed) {
+    void initSubstrate_Directional(const int id, const int np, const Grid &grid, const unsigned long rng_seed,
+                                   const int n_grain_orientations = 0, const bool is_periodic = false) {
 
         // Fill the view of cell X, Y, and ID values, updating the number of substrate active cells appropriately
         // TODO: Could generate random numbers on GPU, instead of using host view and copying over - but would also need
         // inputs struct to store device data for grain locations in X, Y, and GrainIDs
         int substrate_act_cells;
-        view_type_int_2d_host act_cell_data_host = getSurfaceActiveCellData(substrate_act_cells, grid, rng_seed);
+        view_type_int_2d_host act_cell_data_host =
+            getSurfaceActiveCellData(substrate_act_cells, grid, rng_seed, n_grain_orientations, is_periodic);
         // Copy views of substrate grain locations and IDs back to the device
         auto act_cell_data = Kokkos::create_mirror_view_and_copy(memory_space(), act_cell_data_host);
 
@@ -222,9 +248,28 @@ struct CellData {
             });
         // Option to fill empty sites at bottom surface with the grain ID of the nearest grain
         if (_inputs.fill_bottom_surface) {
+            int lower_bound_x, upper_bound_x, lower_bound_y, upper_bound_y;
+            if (is_periodic) {
+                lower_bound_x = 1;
+                upper_bound_x = grid.nx - 1;
+                if (id == 0)
+                    lower_bound_y = 1;
+                else
+                    lower_bound_y = 0;
+                if (id == np - 1)
+                    upper_bound_y = grid.ny_local - 1;
+                else
+                    upper_bound_y = grid.ny_local;
+            }
+            else {
+                lower_bound_x = 0;
+                upper_bound_x = grid.nx;
+                lower_bound_y = 0;
+                upper_bound_y = grid.ny_local;
+            }
             auto md_policy =
                 Kokkos::MDRangePolicy<execution_space, Kokkos::Rank<2, Kokkos::Iterate::Right, Kokkos::Iterate::Right>>(
-                    {0, 0}, {grid.nx, grid.ny_local});
+                    {lower_bound_x, lower_bound_y}, {upper_bound_x, upper_bound_y});
             // For cells that are not associated with grain centers, optionally assign them the GrainID of the nearest
             // grain center
             Kokkos::parallel_for(
@@ -241,8 +286,15 @@ struct CellData {
                             int coord_y_grain_global = act_cell_data(n, 1);
                             int coord_x_grain = act_cell_data(n, 0);
                             int coord_y_global = coord_y + grid.y_offset;
-                            float distance_to_this_grain_x = coord_x - coord_x_grain;
-                            float distance_to_this_grain_y = coord_y_global - coord_y_grain_global;
+                            float distance_to_this_grain_x = Kokkos::abs(coord_x - coord_x_grain);
+                            float distance_to_this_grain_y = Kokkos::abs(coord_y_global - coord_y_grain_global);
+                            // Optionally consider periodic boundary condition in distance calculation
+                            if (is_periodic) {
+                                distance_to_this_grain_x =
+                                    Kokkos::fmin(distance_to_this_grain_x, grid.nx - distance_to_this_grain_x);
+                                distance_to_this_grain_y =
+                                    Kokkos::fmin(distance_to_this_grain_y, grid.ny - distance_to_this_grain_y);
+                            }
                             float distance_to_this_grain =
                                 Kokkos::sqrt(distance_to_this_grain_x * distance_to_this_grain_x +
                                              distance_to_this_grain_y * distance_to_this_grain_y);

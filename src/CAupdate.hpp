@@ -437,7 +437,7 @@ void refillBuffers(const Grid &grid, CellData<MemorySpace> &celldata, Interface<
 
 // 1D domain decomposition: update ghost nodes with new cell data from nucleation.nucleateGrain and cellCapture routines
 template <typename MemorySpace>
-void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &celldata,
+void haloUpdate(const int, const int id, const int np, const Grid &grid, CellData<MemorySpace> &celldata,
                 Interface<MemorySpace> &interface, Orientation<MemorySpace> &orientation) {
 
     std::vector<MPI_Request> send_requests(2, MPI_REQUEST_NULL);
@@ -447,11 +447,11 @@ void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &c
     MPI_Isend(interface.buffer_south_send.data(), interface.buf_components * interface.buf_size, MPI_FLOAT,
               grid.neighbor_rank_south, 0, MPI_COMM_WORLD, &send_requests[0]);
     MPI_Isend(interface.buffer_north_send.data(), interface.buf_components * interface.buf_size, MPI_FLOAT,
-              grid.neighbor_rank_north, 0, MPI_COMM_WORLD, &send_requests[1]);
+              grid.neighbor_rank_north, 1, MPI_COMM_WORLD, &send_requests[1]);
 
     // Receive buffers for all neighbors (MPI_Irecv)
     MPI_Irecv(interface.buffer_south_recv.data(), interface.buf_components * interface.buf_size, MPI_FLOAT,
-              grid.neighbor_rank_south, 0, MPI_COMM_WORLD, &recv_requests[0]);
+              grid.neighbor_rank_south, 1, MPI_COMM_WORLD, &recv_requests[0]);
     MPI_Irecv(interface.buffer_north_recv.data(), interface.buf_components * interface.buf_size, MPI_FLOAT,
               grid.neighbor_rank_north, 0, MPI_COMM_WORLD, &recv_requests[1]);
 
@@ -495,7 +495,9 @@ void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &c
                             new_grain_id =
                                 getGrainID(my_grain_orientation, my_grain_number, orientation.n_grain_orientations);
                             new_octahedron_center_x = interface.buffer_south_recv(buf_position, 4);
-                            new_octahedron_center_y = interface.buffer_south_recv(buf_position, 5);
+                            // Adjust center in Y for periodic boundary if needed
+                            new_octahedron_center_y = interface.getAdjustedOctahedronCenterBufferY(
+                                id, np, coord_y, grid.ny_local, interface.buffer_south_recv(buf_position, 5));
                             new_octahedron_center_z = interface.buffer_south_recv(buf_position, 6);
                             new_diagonal_length = interface.buffer_south_recv(buf_position, 7);
                             new_phase_id = interface.buffer_south_recv(buf_position, 8);
@@ -523,7 +525,9 @@ void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &c
                             new_grain_id =
                                 getGrainID(my_grain_orientation, my_grain_number, orientation.n_grain_orientations);
                             new_octahedron_center_x = interface.buffer_north_recv(buf_position, 4);
-                            new_octahedron_center_y = interface.buffer_north_recv(buf_position, 5);
+                            // Adjust center in Y for periodic boundary if needed
+                            new_octahedron_center_y = interface.getAdjustedOctahedronCenterBufferY(
+                                id, np, coord_y, grid.ny_local, interface.buffer_north_recv(buf_position, 5));
                             new_octahedron_center_z = interface.buffer_north_recv(buf_position, 6);
                             new_diagonal_length = interface.buffer_north_recv(buf_position, 7);
                             new_phase_id = interface.buffer_north_recv(buf_position, 8);
@@ -562,6 +566,106 @@ void haloUpdate(const int, const int, const Grid &grid, CellData<MemorySpace> &c
     interface.resetBuffers();
     // Wait on send requests
     MPI_Waitall(2, send_requests.data(), MPI_STATUSES_IGNORE);
+    Kokkos::fence();
+}
+
+// Update the periodic boundaries at the +/-X edges of the domain and, if not already handled via the domain
+// decomposition in Y, update the periodic boundaries at the +/-Y edges of the domain. Only need to update where cell at
+// boundary was liquid and is now active (a steering vector as used with the halo regions might make this faster in the
+// future)
+template <typename MemorySpace>
+void updatePeriodicBoundaries(const bool mpi_parallel, const Grid &grid, CellData<MemorySpace> &celldata,
+                              Interface<MemorySpace> &interface, Orientation<MemorySpace> &orientation) {
+    auto grain_id = celldata.getGrainIDSubview(grid);
+    auto phase_id = celldata.getPhaseIDSubview(grid);
+
+    // Update for +/-X excludes corners
+    Kokkos::parallel_for(
+        "UpdateBoundariesX", (grid.ny_local - 2) * grid.nz_layer, KOKKOS_LAMBDA(const int &boundary_cell_idx) {
+            const int coord_y = boundary_cell_idx / grid.nz_layer + 1;
+            const int coord_z = boundary_cell_idx % grid.nz_layer;
+            for (int bound_num = 0; bound_num < 2; bound_num++) {
+                const int index_interior = grid.get1DIndex(interface.coord_x_interior[bound_num], coord_y, coord_z);
+                const int index_exterior = grid.get1DIndex(interface.coord_x_exterior[bound_num], coord_y, coord_z);
+                if ((celldata.cell_type(index_interior) == Active) && (celldata.cell_type(index_exterior) == Liquid)) {
+                    // Copy cell attributes to maintain periodic boundary
+                    grain_id(index_exterior) = grain_id(index_interior);
+                    phase_id(index_exterior) = phase_id(index_interior);
+                    // Adjust octahedron center in X, Y, Z
+                    interface.octahedron_center(3 * index_exterior) = interface.octahedron_center(3 * index_interior) +
+                                                                      interface.octahedron_center_offset_x[bound_num];
+                    interface.octahedron_center(3 * index_exterior + 1) =
+                        interface.octahedron_center(3 * index_interior + 1);
+                    interface.octahedron_center(3 * index_exterior + 2) =
+                        interface.octahedron_center(3 * index_interior + 2);
+                    interface.diagonal_length(index_exterior) = interface.diagonal_length(index_interior);
+                    const int my_orientation =
+                        getGrainOrientation(grain_id(index_exterior), orientation.n_grain_orientations);
+                    // (xp,yp,zp) are the global coordinates of the new cell's center
+                    // Note that the Y coordinate is relative to the domain origin to keep the coordinate
+                    // system continuous across ranks
+                    const float xp = interface.coord_x_exterior[bound_num] + 0.5;
+                    const float yp = coord_y + grid.y_offset + 0.5;
+                    const float zp = coord_z + 0.5;
+                    interface.calcCritDiagonalLength(
+                        index_exterior, xp, yp, zp, interface.octahedron_center(3 * index_exterior),
+                        interface.octahedron_center(3 * index_exterior + 1),
+                        interface.octahedron_center(3 * index_exterior + 2), my_orientation,
+                        orientation.grain_unit_vector, phase_id(index_exterior));
+                    celldata.cell_type(index_exterior) = Active;
+                    float octahedron_data[4] = {interface.octahedron_center(3 * index_exterior),
+                                                interface.octahedron_center(3 * index_exterior + 1),
+                                                interface.octahedron_center(3 * index_exterior + 2),
+                                                interface.diagonal_length(index_exterior)};
+                    // Load into halo regions if necessary
+                    celldata.cell_type(index_exterior) = interface.loadGhostNodesSuccess(
+                        mpi_parallel, Active, ActiveFailedBufferLoad, grain_id(index_exterior), octahedron_data,
+                        phase_id(index_exterior), grid.ny_local, interface.coord_x_exterior[bound_num], coord_y,
+                        coord_z, grid.at_north_boundary, grid.at_south_boundary, orientation.n_grain_orientations);
+                }
+            }
+        });
+    // Update for +/-Y and corners - only performed if no MPI (i.e., rank 0 domain wraps around in Y)
+    if (!mpi_parallel) {
+        Kokkos::parallel_for(
+            "UpdateBoundariesY", grid.nx * grid.nz_layer, KOKKOS_LAMBDA(const int &boundary_cell_idx) {
+                const int coord_x = boundary_cell_idx / grid.nz_layer;
+                const int coord_z = boundary_cell_idx % grid.nz_layer;
+                for (int bound_num = 0; bound_num < 2; bound_num++) {
+                    const int index_interior = grid.get1DIndex(coord_x, interface.coord_y_interior[bound_num], coord_z);
+                    const int index_exterior = grid.get1DIndex(coord_x, interface.coord_y_exterior[bound_num], coord_z);
+                    if ((celldata.cell_type(index_interior) == Active) &&
+                        (celldata.cell_type(index_exterior) == Liquid)) {
+                        // Copy cell attributes to maintain periodic boundary
+                        grain_id(index_exterior) = grain_id(index_interior);
+                        phase_id(index_exterior) = phase_id(index_interior);
+                        interface.octahedron_center(3 * index_exterior) =
+                            interface.octahedron_center(3 * index_interior);
+                        // Adjust octahedron center in Y
+                        interface.octahedron_center(3 * index_exterior + 1) =
+                            interface.octahedron_center(3 * index_interior + 1) +
+                            interface.octahedron_center_offset_y[bound_num];
+                        interface.octahedron_center(3 * index_exterior + 2) =
+                            interface.octahedron_center(3 * index_interior + 2);
+                        interface.diagonal_length(index_exterior) = interface.diagonal_length(index_interior);
+                        const int my_orientation =
+                            getGrainOrientation(grain_id(index_exterior), orientation.n_grain_orientations);
+                        // (xp,yp,zp) are the global coordinates of the new cell's center
+                        // Note that the Y coordinate is relative to the domain origin to keep the coordinate
+                        // system continuous across ranks
+                        const float xp = coord_x + 0.5;
+                        const float yp = interface.coord_y_exterior[bound_num] + grid.y_offset + 0.5;
+                        const float zp = coord_z + 0.5;
+                        interface.calcCritDiagonalLength(
+                            index_exterior, xp, yp, zp, interface.octahedron_center(3 * index_exterior),
+                            interface.octahedron_center(3 * index_exterior + 1),
+                            interface.octahedron_center(3 * index_exterior + 2), my_orientation,
+                            orientation.grain_unit_vector, phase_id(index_exterior));
+                        celldata.cell_type(index_exterior) = Active;
+                    }
+                }
+            });
+    }
     Kokkos::fence();
 }
 //*****************************************************************************/

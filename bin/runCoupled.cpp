@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
 
         // Variables characterizing the active cell region within each rank's grid, including buffers for ghost node
         // data (fixed size) and the steering vector/steering vector size on host/device
-        Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size);
+        Interface<memory_space> interface(id, grid.domain_size, inputs.substrate.init_oct_size, grid.nx, grid.ny);
         MPI_Barrier(MPI_COMM_WORLD);
 
         // Nucleation data structure, containing views of nuclei locations, time steps, and ids, and nucleation event

@@ -286,7 +286,7 @@ void testNucleateGrain() {
     nucleation.nuclei_grain_id = Kokkos::create_mirror_view_and_copy(TEST_MEMSPACE(), nuclei_grain_id_host);
 
     // Interface struct
-    Interface<memory_space> interface(id, grid.domain_size, 0.01);
+    Interface<memory_space> interface(id, grid.domain_size, 0.01, grid.nx, grid.ny);
     // Take enough time steps such that every nucleation event has a chance to occur
     for (int cycle = 0; cycle < 10; cycle++) {
         nucleation.nucleateGrain(cycle, grid, celldata, interface);

@@ -52,29 +52,24 @@ struct Print {
     // ranks
     using view_type_int_host = Kokkos::View<int *, Kokkos::HostSpace>;
     using view_type_float_host = Kokkos::View<float *, Kokkos::HostSpace>;
-    view_type_int_host recv_y_offset, recv_ny_local, recv_buf_size;
+    // Stored on rank 0
+    std::vector<int> recv_buf_size_y_allranks;
     // Y coordinates for a given rank's data being send/loaded into the view of all domain data on rank 0=
     int send_buf_start_y, send_buf_end_y, send_buf_size;
     // Holds print options from input file
     PrintInputs _inputs;
     // Combined path/file prefix for output files
     std::string path_base_filename;
+    // Periodic boundaries in X and Y
+    bool _is_periodic;
 
     // Default constructor - options are set in getPrintDataFromFile and copied into this struct
-    Print(const Grid &grid, const int np, PrintInputs inputs)
-        : recv_y_offset(view_type_int_host(Kokkos::ViewAllocateWithoutInitializing("Recv_y_offset"), np))
-        , recv_ny_local(view_type_int_host(Kokkos::ViewAllocateWithoutInitializing("Recv_ny_local"), np))
-        , recv_buf_size(view_type_int_host(Kokkos::ViewAllocateWithoutInitializing("RBufSize"), np))
-        , _inputs(inputs) {
+    Print(const Grid &grid, const int np, PrintInputs inputs, const bool is_periodic = false)
+        : _inputs(inputs)
+        , _is_periodic(is_periodic) {
 
-        // Buffers for sending/receiving data across ranks
-        for (int recvrank = 0; recvrank < np; recvrank++) {
-            recv_y_offset(recvrank) = grid.getYOffset(recvrank, np);
-            recv_ny_local(recvrank) = grid.getNyLocal(recvrank, np);
-            recv_buf_size(recvrank) = grid.nx * recv_ny_local(recvrank) * grid.nz;
-        }
-
-        // Y coordinates for a given rank's data being send/loaded into the view of all domain data on rank 0
+        // Y coordinates for a given rank's data being sent/loaded into the view of all domain data on rank 0 - do not
+        // send halo regions or periodic boundaries (if applicable)
         if (grid.y_offset == 0)
             send_buf_start_y = 0;
         else
@@ -83,7 +78,11 @@ struct Print {
             send_buf_end_y = grid.ny_local;
         else
             send_buf_end_y = grid.ny_local - 1;
-        send_buf_size = grid.nx * (send_buf_end_y - send_buf_start_y) * grid.nz;
+        int send_buf_size_y = (send_buf_end_y - send_buf_start_y);
+        send_buf_size = grid.nx * send_buf_size_y * grid.nz;
+        // Rank 0 stores amount of data received from each other MPI rank
+        recv_buf_size_y_allranks.resize(np);
+        MPI_Gather(&send_buf_size_y, 1, MPI_INT, recv_buf_size_y_allranks.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
 
         path_base_filename = _inputs.path_to_output + _inputs.base_filename;
     }
@@ -151,7 +150,7 @@ struct Print {
             // Place rank 0 data into view for whole domain
             for (int coord_z = 0; coord_z < z_print_size; coord_z++) {
                 for (int coord_x = 0; coord_x < grid.nx; coord_x++) {
-                    for (int coord_y_local = 0; coord_y_local < grid.ny_local; coord_y_local++) {
+                    for (int coord_y_local = send_buf_start_y; coord_y_local < send_buf_end_y; coord_y_local++) {
                         int index = grid.get1DIndex(coord_x, coord_y_local, coord_z);
                         view_data_whole_domain(coord_z, coord_x, coord_y_local) = view_data_this_rank(index);
                     }
@@ -159,8 +158,9 @@ struct Print {
             }
 
             // Receive values from other ranks - message size different for different ranks
+            int y_start_unpack = send_buf_end_y;
             for (int recvrank = 1; recvrank < np; recvrank++) {
-                int recv_buf_size_this_rank = recv_buf_size(recvrank);
+                int recv_buf_size_this_rank = grid.nx * recv_buf_size_y_allranks[recvrank] * grid.nz;
                 host_view_type recv_buf(Kokkos::ViewAllocateWithoutInitializing("RecvBufData"),
                                         recv_buf_size_this_rank);
                 MPI_Recv(recv_buf.data(), recv_buf_size_this_rank, msg_type, recvrank, 0, MPI_COMM_WORLD,
@@ -168,13 +168,15 @@ struct Print {
                 int data_counter = 0;
                 for (int coord_z = 0; coord_z < z_print_size; coord_z++) {
                     for (int coord_x = 0; coord_x < grid.nx; coord_x++) {
-                        for (int coord_y_local = 0; coord_y_local < recv_ny_local(recvrank); coord_y_local++) {
-                            int coord_y_global = coord_y_local + recv_y_offset(recvrank);
+                        for (int coord_y_local = 0; coord_y_local < recv_buf_size_y_allranks[recvrank];
+                             coord_y_local++) {
+                            int coord_y_global = coord_y_local + y_start_unpack;
                             view_data_whole_domain(coord_z, coord_x, coord_y_global) = recv_buf(data_counter);
                             data_counter++;
                         }
                     }
                 }
+                y_start_unpack += recv_buf_size_y_allranks[recvrank];
             }
         }
         else {
@@ -526,6 +528,21 @@ struct Print {
             z_print_size = grid.z_layer_bottom + grid.nz_layer;
             z_print_origin = grid.z_min;
         }
+        // If periodic BCs are used, "real" domain doesn't include edges in x and y
+        int nx_print, ny_print;
+        double x_min_print, y_min_print;
+        if (_is_periodic) {
+            nx_print = grid.nx - 2;
+            ny_print = grid.ny - 2;
+            x_min_print = grid.x_min + grid.deltax;
+            y_min_print = grid.y_min + grid.deltax;
+        }
+        else {
+            nx_print = grid.nx;
+            ny_print = grid.ny;
+            x_min_print = grid.x_min;
+            y_min_print = grid.y_min;
+        }
 
         if (_inputs.print_binary)
             output_fstream.open(filename, std::ios::out | std::ios::binary);
@@ -538,10 +555,10 @@ struct Print {
         else
             output_fstream << "ASCII" << std::endl;
         output_fstream << "DATASET STRUCTURED_POINTS" << std::endl;
-        output_fstream << "DIMENSIONS " << grid.nx << " " << grid.ny << " " << z_print_size << std::endl;
-        output_fstream << "ORIGIN " << grid.x_min << " " << grid.y_min << " " << z_print_origin << std::endl;
+        output_fstream << "DIMENSIONS " << nx_print << " " << ny_print << " " << z_print_size << std::endl;
+        output_fstream << "ORIGIN " << x_min_print << " " << y_min_print << " " << z_print_origin << std::endl;
         output_fstream << "SPACING " << grid.deltax << " " << grid.deltax << " " << grid.deltax << std::endl;
-        output_fstream << std::fixed << "POINT_DATA " << grid.nx * grid.ny * z_print_size << std::endl;
+        output_fstream << std::fixed << "POINT_DATA " << nx_print * ny_print * z_print_size << std::endl;
     }
 
     // Called on rank 0 to write view data to the vtk file
@@ -559,12 +576,26 @@ struct Print {
             z_end = grid.nz_layer;
         else
             z_end = grid.z_layer_bottom + grid.nz_layer;
+        // If periodic BCs are used, "real" domain doesn't include edges in x and y
+        int x_start, y_start, x_end, y_end;
+        if (_is_periodic) {
+            x_start = 1;
+            y_start = 1;
+            x_end = grid.nx - 1;
+            y_end = grid.ny - 1;
+        }
+        else {
+            x_start = 0;
+            y_start = 0;
+            x_end = grid.nx;
+            y_end = grid.ny;
+        }
         // Print data to the vtk file - casting to the appropriate type if necessary
         output_fstream << "SCALARS " << var_name_label << " " << data_label << " 1" << std::endl;
         output_fstream << "LOOKUP_TABLE default" << std::endl;
         for (int coord_z = z_start; coord_z < z_end; coord_z++) {
-            for (int coord_y_global = 0; coord_y_global < grid.ny; coord_y_global++) {
-                for (int coord_x = 0; coord_x < grid.nx; coord_x++) {
+            for (int coord_y_global = y_start; coord_y_global < y_end; coord_y_global++) {
+                for (int coord_x = x_start; coord_x < x_end; coord_x++) {
                     if (data_label == "int") {
                         int writeval = static_cast<int>(view_data_whole_domain(coord_z, coord_x, coord_y_global));
                         writeData(output_fstream, writeval, _inputs.print_binary, true);
@@ -618,6 +649,21 @@ struct Print {
         misorientations_ofstream << "SCALARS Angle_z short 1" << std::endl;
         misorientations_ofstream << "LOOKUP_TABLE default" << std::endl;
 
+        // If periodic BCs are used, "real" domain doesn't include edges in x and y
+        int x_start, y_start, x_end, y_end;
+        if (_is_periodic) {
+            x_start = 1;
+            y_start = 1;
+            x_end = grid.nx - 1;
+            y_end = grid.ny - 1;
+        }
+        else {
+            x_start = 0;
+            y_start = 0;
+            x_end = grid.nx;
+            y_end = grid.ny;
+        }
+
         // Get grain <100> misorientation relative to the Z direction for each orientation
         auto grain_misorientation = orientation.misorientationCalc(2);
         // For cells that are currently liquid (possible only for intermediate state print, as the final state will only
@@ -627,8 +673,8 @@ struct Print {
         // the misorientation for cells in the powder layer that have not been assigned a grain ID.
         // For prior layers, cell type check is unnecessary as these regions have all solidified
         for (int k = 0; k < grid.z_layer_bottom; k++) {
-            for (int j = 0; j < grid.ny; j++) {
-                for (int i = 0; i < grid.nx; i++) {
+            for (int j = y_start; j < y_end; j++) {
+                for (int i = x_start; i < x_end; i++) {
                     short int_print_val;
                     if (grain_id_whole_domain(k, i, j) == 0)
                         int_print_val = 200;
@@ -655,8 +701,8 @@ struct Print {
         // For current layer, check cell types to see if -1 should be printed (if this is a print following a layer, all
         // cells will be solid and no -1s should be written)
         for (int k = grid.z_layer_bottom; k < z_end; k++) {
-            for (int j = 0; j < grid.ny; j++) {
-                for (int i = 0; i < grid.nx; i++) {
+            for (int j = y_start; j < y_end; j++) {
+                for (int i = x_start; i < x_end; i++) {
                     short int_print_val;
                     if (grain_id_whole_domain(k, i, j) == 0)
                         int_print_val = 200;

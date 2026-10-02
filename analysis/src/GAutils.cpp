@@ -15,7 +15,8 @@
 // Parse log file using json format
 void parseLogFile(std::string log_file, int &nx, int &ny, int &nz, double &deltax, int &number_of_layers,
                   std::vector<double> &xyz_bounds, std::vector<std::string> &grain_unit_vector_file,
-                  std::vector<std::string> &phase_names, int &num_phases, bool orientation_files_in_input) {
+                  std::vector<std::string> &phase_names, int &num_phases, bool orientation_files_in_input,
+                  bool &is_periodic) {
 
     std::ifstream input_data_stream;
     input_data_stream.open(log_file);
@@ -34,6 +35,10 @@ void parseLogFile(std::string log_file, int &nx, int &ny, int &nz, double &delta
     nx = logdata["Domain"]["Nx"];
     ny = logdata["Domain"]["Ny"];
     nz = logdata["Domain"]["Nz"];
+    if (logdata["Domain"].contains("PeriodicXY"))
+        is_periodic = logdata["Domain"]["PeriodicXY"];
+    else
+        is_periodic = false;
     std::string simulation_type = logdata["SimulationType"];
     // Directional, Spot, SingleGrain problem types are single layer
     if (simulation_type == "FromFinch" || simulation_type == "FromFile")

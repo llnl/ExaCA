@@ -63,6 +63,26 @@ void writeTestVolume() {
     test_data.close();
 }
 
+void writeTestVolume_FullDomain(const int nx, const int ny, const int nz) {
+    // Write out example data for checking grain extents for full domain
+    std::ofstream test_data;
+    test_data.open("TestVolume.json");
+    test_data << "{" << std::endl;
+    test_data << "   \"Regions\": {" << std::endl;
+    test_data << "       \"RepresentativeVolume\": {" << std::endl;
+    test_data << "          \"units\": \"Cells\"," << std::endl;
+    test_data << "          \"xBounds\": [0, " << std::to_string(nx - 1) << "]," << std::endl;
+    test_data << "          \"yBounds\": [0, " << std::to_string(ny - 1) << "]," << std::endl;
+    test_data << "          \"zBounds\": [0, " << std::to_string(nz - 1) << "]," << std::endl;
+    test_data << "          \"printExaConstit\": false," << std::endl;
+    test_data << "          \"printPoleFigureData\": false," << std::endl;
+    test_data << "          \"printAvgStats\": [\"XExtent\", \"YExtent\", \"ZExtent\"]" << std::endl;
+    test_data << "      }" << std::endl;
+    test_data << "   }" << std::endl;
+    test_data << "}" << std::endl;
+    test_data.close();
+}
+
 void testConstructRepresentativeRegion_Volume() {
     // Write out example data
     writeTestVolume();
@@ -89,7 +109,7 @@ void testConstructRepresentativeRegion_Volume() {
 
     // Construct region
     RepresentativeRegion representativeregion(AnalysisData, "RepresentativeVolume", nx, ny, nz, deltax, xyz_bounds,
-                                              grain_id, phase_id);
+                                              grain_id, phase_id, false);
 
     // Check results
     EXPECT_TRUE(representativeregion.region_type == "volume");
@@ -163,7 +183,7 @@ void testConstructRepresentativeRegion_Area() {
 
     // Construct region
     RepresentativeRegion representativeregion(analysis_data, "RepresentativeArea", nx, ny, nz, deltax, xyz_bounds,
-                                              grain_id, phase_id);
+                                              grain_id, phase_id, false);
 
     // Check results
     EXPECT_TRUE(representativeregion.region_type == "area");
@@ -237,7 +257,7 @@ void testCollectGrainStats() {
     std::ifstream analysis_data_stream("TestVolume.json");
     nlohmann::json analysis_data = nlohmann::json::parse(analysis_data_stream);
     RepresentativeRegion representativeregion(analysis_data, "RepresentativeVolume", nx, ny, nz, deltax, xyz_bounds,
-                                              grain_id, phase_id);
+                                              grain_id, phase_id, false);
 
     // Check results of grain ID vector (50 of each grain ID should exist)
     EXPECT_EQ(representativeregion.region_size_cells, nx * (ny - 1) * (nz - 2));
@@ -275,6 +295,105 @@ void testCollectGrainStats() {
         EXPECT_FLOAT_EQ(grain_extent_z[n], deltax * Kokkos::pow(10, 6));
     }
 }
+
+// For a 3D domain periodic in X and Y, ensure accurate calculations of grain extents in x, y, z
+void testCollectGrainStats_Periodic() {
+
+    const int nx = 10;
+    const int ny = 20;
+    const int nz = 10;
+    // Write out example data
+    writeTestVolume_FullDomain(nx, ny, nz);
+
+    const double deltax = 1 * Kokkos::pow(10, -6);
+    // Representative region spand entire volume
+    std::vector<double> xyz_bounds = {0.0, 0.0, 0.0, nx * deltax, ny * deltax, nz * deltax};
+
+    // View for storing grain ID data
+    Kokkos::View<int ***, Kokkos::HostSpace> grain_id(Kokkos::ViewAllocateWithoutInitializing("grain_id"), nz, nx, ny);
+    Kokkos::View<short ***, Kokkos::HostSpace> phase_id(Kokkos::ViewAllocateWithoutInitializing("phase_id"), nz, nx,
+                                                        ny);
+
+    // Grain 1: Doesn't cross X or Y domain boundaries
+    int i_grain_nonperiodic[5] = {3, 4, 5, 6, 7};
+    for (int k = 0; k < 2; k++) {
+        for (int ii = 0; ii < 5; ii++) {
+            int i = i_grain_nonperiodic[ii];
+            for (int j = 10; j < 18; j++) {
+                grain_id(k, i, j) = 1;
+            }
+        }
+    }
+
+    // Grain 2: Crosses X boundary but not Y
+    int i_grain_periodic[5] = {8, 9, 0, 1, 2};
+    for (int k = 0; k < 2; k++) {
+        for (int ii = 0; ii < 5; ii++) {
+            int i = i_grain_periodic[ii];
+            for (int j = 10; j < 18; j++) {
+                grain_id(k, i, j) = 2;
+            }
+        }
+    }
+
+    // Grain 3: Crosses X and Y boundaries
+    int j_grain_periodic[3] = {18, 19, 0};
+    for (int k = 0; k < 2; k++) {
+        for (int i = 0; i < nx; i++) {
+            for (int jj = 0; jj < 3; jj++) {
+                int j = j_grain_periodic[jj];
+                grain_id(k, i, j) = 3;
+            }
+        }
+    }
+
+    // Grain 4: Remainder of domain at Z = 0, 1
+    for (int k = 0; k < 2; k++) {
+        for (int i = 0; i < nx; i++) {
+            for (int j = 1; j < 10; j++) {
+                grain_id(k, i, j) = 4;
+            }
+        }
+    }
+
+    // Grain 5: Remainder of domain at Z > 1
+    for (int k = 2; k < nz; k++) {
+        for (int i = 0; i < nx; i++) {
+            for (int j = 0; j < ny; j++) {
+                grain_id(k, i, j) = 5;
+            }
+        }
+    }
+
+    // Representative region creation with periodic boundary in X and Y
+    std::ifstream analysis_data_stream("TestVolume.json");
+    nlohmann::json analysis_data = nlohmann::json::parse(analysis_data_stream);
+    RepresentativeRegion representativeregion(analysis_data, "RepresentativeVolume", nx, ny, nz, deltax, xyz_bounds,
+                                              grain_id, phase_id, true);
+
+    // Obtain the grain extents
+    // Extent of each grain in X
+    std::vector<float> grain_extent_x(representativeregion.number_of_grains);
+    representativeregion.calcGrainExtent(grain_extent_x, grain_id, "X", deltax);
+    // Extent of each grain in Y
+    std::vector<float> grain_extent_y(representativeregion.number_of_grains);
+    representativeregion.calcGrainExtent(grain_extent_y, grain_id, "Y", deltax);
+    // Extent of each grain in Z
+    std::vector<float> grain_extent_z(representativeregion.number_of_grains);
+    representativeregion.calcGrainExtent(grain_extent_z, grain_id, "Z", deltax);
+
+    // Check grain extents in microns
+    int expected_extent_x_cells[5] = {5, 5, nx, nx, nx};
+    int expected_extent_y_cells[5] = {8, 8, 3, 9, ny};
+    int expected_extent_z_cells[5] = {2, 2, 2, 2, nz - 2};
+    for (int n = 0; n < 5; n++) {
+        std::cout << n + 1 << std::endl;
+        EXPECT_FLOAT_EQ(grain_extent_x[n], expected_extent_x_cells[n] * deltax * Kokkos::pow(10, 6));
+        EXPECT_FLOAT_EQ(grain_extent_y[n], expected_extent_y_cells[n] * deltax * Kokkos::pow(10, 6));
+        EXPECT_FLOAT_EQ(grain_extent_z[n], expected_extent_z_cells[n] * deltax * Kokkos::pow(10, 6));
+    }
+}
+
 //---------------------------------------------------------------------------//
 // RUN TESTS
 //---------------------------------------------------------------------------//
@@ -282,5 +401,6 @@ TEST(TEST_CATEGORY, representative_region) {
     testConstructRepresentativeRegion_Volume();
     testConstructRepresentativeRegion_Area();
     testCollectGrainStats();
+    testCollectGrainStats_Periodic();
 }
 } // end namespace Test
