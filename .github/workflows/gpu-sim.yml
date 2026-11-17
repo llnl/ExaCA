@@ -1,0 +1,131 @@
+name: GPU Simulator
+
+# Optional, non-required check. The hosted runners have no GPU, so this builds
+# Kokkos and ExaCA with the HIP backend for gfx942 and runs the `unit_test/`
+# gtests on a simulated AMD Instinct MI300X
+# (https://github.com/pantheongpu/pantheonsim). The existing `HIP` job in
+# CI.yml builds but never runs them. A simulator cannot reproduce
+# hardware-specific behavior or timing, so it complements real-GPU testing and
+# does not replace it.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - "src/**"
+      - "unit_test/**"
+      - "examples/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/gpu-sim.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: unit tests (ROCm 7.1 and simulated MI300X)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      # Same value CI.yml uses for its HIP job and for the CPU jobs.
+      OMPI_MCA_btl_vader_single_copy_mechanism: "none"
+      # FindMPI relies on the compiler wrappers, which are not used with hipcc.
+      MPI_LOCATION: /usr/lib/x86_64-linux-gnu/openmpi
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      - name: Set up the simulated GPU and ROCm
+        uses: pantheongpu/setup-pantheonsim@ca87fe3143b29166822b923d6050945c5179408c # v0.1.5
+        with:
+          gpu: amd/mi300x
+          cuda-toolkit: none
+          rocm: "7.1"
+
+      # Kokkos' HIP backend uses rocThrust and rocPRIM; the action installs
+      # only the compiler side.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenmpi-dev openmpi-bin libgtest-dev \
+            rocthrust-dev rocprim-dev
+
+      - name: Checkout json
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: nlohmann/json
+          ref: v3.11.2
+          path: json
+          persist-credentials: false
+
+      - name: Build json
+        working-directory: json
+        run: |
+          cmake -B build \
+            -DCMAKE_INSTALL_PREFIX=$HOME/json \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DJSON_BuildTests=OFF
+          cmake --build build --parallel 3
+          cmake --install build
+
+      - name: Checkout kokkos
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: kokkos/kokkos
+          ref: 4.2.00
+          path: kokkos
+          persist-credentials: false
+
+      # Same Kokkos version as the HIP job in CI.yml, with gfx942 instead of
+      # gfx908.
+      - name: Build kokkos
+        working-directory: kokkos
+        run: |
+          cmake -B build \
+            -DCMAKE_INSTALL_PREFIX=$HOME/kokkos \
+            -DKokkos_ENABLE_HIP=ON \
+            -DKokkos_ARCH_AMD_GFX942=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=hipcc
+          cmake --build build --parallel 3
+          cmake --install build
+
+      - name: Build ExaCA
+        run: |
+          cmake -B build \
+            -D CMAKE_INSTALL_PREFIX=$HOME/exaca \
+            -D CMAKE_PREFIX_PATH="$HOME/kokkos;$HOME/json" \
+            -D CMAKE_BUILD_TYPE=Release \
+            -D CMAKE_CXX_COMPILER=hipcc \
+            -D CMAKE_CXX_FLAGS="-Wall -Wextra -pedantic -I${MPI_LOCATION}/include" \
+            -D CMAKE_EXE_LINKER_FLAGS="-L${MPI_LOCATION}/lib -lmpi" \
+            -D CMAKE_SHARED_LINKER_FLAGS="-L${MPI_LOCATION}/lib -lmpi" \
+            -D MPIEXEC_MAX_NUMPROCS=2 \
+            -D MPIEXEC_PREFLAGS="--oversubscribe" \
+            -D ExaCA_ENABLE_TESTING=ON
+          cmake --build build --parallel 3
+          # The tests read the material files from the install prefix.
+          cmake --install build
+
+      - name: Check the HIP tests are registered
+        run: ctest --test-dir build -N | grep -c '_HIP_'
+
+      # Only the HIP variants are run (the SERIAL variants of the same tests are
+      # not meaningful in a HIP-only Kokkos build). The excluded HIP tests fail
+      # on the current sources for reasons unrelated to the simulator:
+      # Orientation (the test reads a mirror view that was never copied back),
+      # Interface (the test reads a device view on the host), Nucleation (the
+      # test reassigns a local view and checks it instead of the cell data), and
+      # Update on 2 ranks (MPI_Isend of a device pointer needs a GPU-aware MPI).
+      - name: Unit test ExaCA
+        run: |
+          vgpu run ctest --test-dir build --output-on-failure --no-tests=error \
+            -R '_HIP_' -E 'Orientation|Interface|Nucleation|Update_test_HIP_np_2'
